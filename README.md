@@ -34,10 +34,10 @@ Never commit credentials, `.env*`, `.dev.vars*`, or production data. Commissione
 
 ## Contributing
 
-1. Clone the repository after accepting a collaborator invitation.
+1. Sign in to GitHub (or create a free account), click **Fork** to copy this public repository to your account, then clone your fork. No collaborator invitation is needed.
 2. Create a branch: `git switch -c your-name/short-description`.
 3. Make and test your changes. Include a screenshot for visible UI changes.
-4. Push the branch and open a pull request into `main`.
+4. Push the branch to your fork and open a pull request targeting `abhinavsehgal123/parlay-portal` on `main`.
 5. Ask Abhinav to review and merge.
 
 Codex and Claude Code can work from the same cloned repository. Keep each change on its own branch. Do not modify production picks while testing.
