@@ -12,6 +12,10 @@ export const submissions = sqliteTable('submissions', {
   status: text('status').notNull().default('Pending'),
   duplicateKey: text('duplicate_key').notNull(),
   createdAt: text('created_at').notNull(),
+  details: text('details').notNull().default('{}'),
+  evidence: text('evidence').notNull().default('{}'),
+  revision: integer('revision').notNull().default(0),
+  updatedAt: text('updated_at').notNull().default(''),
 }, (table) => [uniqueIndex('one_pick_per_member_week').on(table.season, table.week, table.member)]);
 
 export const portalSettings = sqliteTable('portal_settings', {
@@ -39,3 +43,42 @@ export const weeklyTickets = sqliteTable('weekly_tickets', {
   potentialPayout: real('potential_payout'),
   updatedAt: text('updated_at').notNull(),
 }, (table) => [uniqueIndex('one_ticket_per_season_week').on(table.season, table.week)]);
+
+export const missedSubmissions = sqliteTable('missed_submissions', {
+  id: text('id').primaryKey(),
+  season: text('season').notNull(),
+  week: integer('week').notNull(),
+  member: text('member').notNull(),
+  reason: text('reason').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [uniqueIndex('one_missed_submission_per_week').on(table.season, table.week, table.member)]);
+
+export const pickChanges = sqliteTable('pick_changes', {
+  id: text('id').primaryKey(),
+  submissionId: text('submission_id').notNull(),
+  season: text('season').notNull(),
+  week: integer('week').notNull(),
+  member: text('member').notNull(),
+  actor: text('actor').notNull(),
+  action: text('action').notNull(),
+  before: text('before_json').notNull(),
+  after: text('after_json').notNull(),
+  reason: text('reason').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+});
+
+export const sheetOutbox = sqliteTable('sheet_outbox', {
+  id: text('id').primaryKey(),
+  payload: text('payload').notNull(),
+  version: text('version').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttempt: integer('next_attempt').notNull().default(0),
+  error: text('error').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+});
+
+export const syncLease = sqliteTable('sync_lease', {
+  id: integer('id').primaryKey(),
+  token: text('token').notNull(),
+  expires: integer('expires').notNull(),
+});

@@ -1,81 +1,48 @@
-import { env } from 'cloudflare:workers';
 import { isAdmin } from '@/lib/admin';
-
-async function ready() {
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS portal_settings (
-    id INTEGER PRIMARY KEY,
-    season TEXT NOT NULL DEFAULT '2026 Season',
-    active_week INTEGER NOT NULL DEFAULT 1,
-    submissions_open INTEGER NOT NULL DEFAULT 1,
-    deadline_label TEXT NOT NULL DEFAULT 'Sunday, 12:45 PM ET'
-  )`).run();
-  await env.DB.prepare("INSERT OR IGNORE INTO portal_settings (id, season, active_week, submissions_open, deadline_label) VALUES (1, '2026 Season', 1, 1, 'Sunday, 12:45 PM ET')").run();
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS weekly_cycles (
-    id TEXT PRIMARY KEY,
-    season TEXT NOT NULL,
-    week INTEGER NOT NULL,
-    pick_count INTEGER NOT NULL,
-    finalized_at TEXT NOT NULL,
-    UNIQUE(season, week)
-  )`).run();
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS weekly_tickets (
-    id TEXT PRIMARY KEY,
-    season TEXT NOT NULL,
-    week INTEGER NOT NULL,
-    combined_odds INTEGER,
-    wager REAL,
-    potential_payout REAL,
-    updated_at TEXT NOT NULL,
-    UNIQUE(season, week)
-  )`).run();
-}
-
-export async function PATCH(request: Request) {
-  await ready();
-  if (!isAdmin(request)) {
-    return Response.json({ error: 'Commissioner access required.' }, { status: 403 });
-  }
-  const body = await request.json() as Record<string, unknown>;
-  if (body.action === 'saveTicket') {
-    const settings = await env.DB.prepare('SELECT season, active_week AS activeWeek FROM portal_settings WHERE id = 1').first();
-    const season = String(settings?.season ?? '2026 Season');
-    const week = Number(settings?.activeWeek ?? 1);
-    const combinedOdds = Number(body.combinedOdds);
-    const wager = Number(body.wager);
-    const potentialPayout = Number(body.potentialPayout);
-    if (!Number.isInteger(combinedOdds) || (combinedOdds > -100 && combinedOdds < 100) || !Number.isFinite(wager) || wager <= 0 || !Number.isFinite(potentialPayout) || potentialPayout <= 0) {
-      return Response.json({ error: 'Check the combined odds, wager, and potential payout.' }, { status: 400 });
+import { db,safeWrite } from '@/lib/portal-db';
+import { members } from '@/lib/portal';
+const fail=(error:string,status=400)=>Response.json({error},{status});
+export async function PATCH(request:Request) {
+  if(!isAdmin(request)||!safeWrite(request))return fail('Admin access required.',403);
+  try {
+    const body=await request.json() as Record<string,unknown>;
+    const s=await db().prepare('SELECT season,active_week AS activeWeek,deadline_label AS deadlineLabel FROM portal_settings WHERE id=1').first<{season:string;activeWeek:number;deadlineLabel:string}>();
+    if(!s)return fail('League settings unavailable.',503);
+    if(body.action==='saveTicket') {
+      const season=String(body.season||s.season),week=Number(body.week??s.activeWeek),odds=Number(body.combinedOdds),wager=Number(body.wager),payout=Number(body.potentialPayout);
+      if(!Number.isInteger(week)||!Number.isInteger(odds)||Math.abs(odds)<100||!Number.isFinite(wager)||wager<=0||!Number.isFinite(payout)||payout<=0)return fail('Check the official odds, wager, and potential payout.');
+      await db().prepare(`INSERT INTO weekly_tickets (id,season,week,combined_odds,wager,potential_payout,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(season,week) DO UPDATE SET combined_odds=excluded.combined_odds,wager=excluded.wager,potential_payout=excluded.potential_payout,updated_at=excluded.updated_at`).bind(`${season}|${week}`,season,week,odds,wager,payout,new Date().toISOString()).run();
+      return Response.json({ok:true});
     }
-    const updatedAt = new Date().toISOString();
-    await env.DB.prepare(`INSERT INTO weekly_tickets (id, season, week, combined_odds, wager, potential_payout, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(season, week) DO UPDATE SET combined_odds = excluded.combined_odds, wager = excluded.wager, potential_payout = excluded.potential_payout, updated_at = excluded.updated_at`)
-      .bind(`${season}|${week}`, season, week, combinedOdds, wager, potentialPayout, updatedAt).run();
-    return Response.json({ season, week, combinedOdds, wager, potentialPayout, updatedAt });
-  }
-  if (body.action === 'finalizeAndAdvance') {
-    const settings = await env.DB.prepare('SELECT season, active_week AS activeWeek, deadline_label AS deadlineLabel FROM portal_settings WHERE id = 1').first();
-    const currentSeason = String(settings?.season ?? '2026 Season');
-    const currentWeek = Number(settings?.activeWeek ?? 1);
-    const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM submissions WHERE season = ? AND week = ?').bind(currentSeason, currentWeek).first();
-    const pickCount = Number(count?.count ?? 0);
-    if (!pickCount) return Response.json({ error: 'Add at least one pick before finalizing this week.' }, { status: 400 });
-    const finalizedAt = new Date().toISOString();
-    const nextWeek = currentWeek + 1;
-    await env.DB.batch([
-      env.DB.prepare('INSERT OR REPLACE INTO weekly_cycles (id, season, week, pick_count, finalized_at) VALUES (?, ?, ?, ?, ?)').bind(`${currentSeason}|${currentWeek}`, currentSeason, currentWeek, pickCount, finalizedAt),
-      env.DB.prepare('UPDATE portal_settings SET active_week = ?, submissions_open = 1 WHERE id = 1').bind(nextWeek),
-    ]);
-    return Response.json({ season: currentSeason, completedWeek: currentWeek, nextWeek, pickCount, finalizedAt, submissionsOpen: true, deadlineLabel: settings?.deadlineLabel });
-  }
-  const season = String(body.season ?? '').trim();
-  const activeWeek = Number(body.activeWeek);
-  const deadlineLabel = String(body.deadlineLabel ?? '').trim();
-  const submissionsOpen = Boolean(body.submissionsOpen);
-  if (!season || !Number.isInteger(activeWeek) || activeWeek < 0 || activeWeek > 30 || !deadlineLabel) {
-    return Response.json({ error: 'Check the season, week, and deadline.' }, { status: 400 });
-  }
-  await env.DB.prepare('UPDATE portal_settings SET season = ?, active_week = ?, submissions_open = ?, deadline_label = ? WHERE id = 1')
-    .bind(season, activeWeek, submissionsOpen ? 1 : 0, deadlineLabel).run();
-  return Response.json({ season, activeWeek, submissionsOpen, deadlineLabel });
+    if(body.action==='finalizeAndAdvance') {
+      if(body.season!==s.season||Number(body.week)!==s.activeWeek)return fail('The active week changed. Refresh before finalizing.',409);
+      const picks=(await db().prepare('SELECT id,member,status,revision FROM submissions WHERE season=? AND week=?').bind(s.season,s.activeWeek).all()).results;
+      if(!picks.length)return fail('There are no picks to finalize.');
+      if(picks.some(x=>x.status==='Pending'))return fail('Resolve every pending pick before finalizing.');
+      const missing=members.filter(m=>!picks.some(p=>p.member===m));
+      if(missing.length&&body.reviewedMissing!==true)return fail('Review the missing members before finalizing.');
+      const penalties=Array.isArray(body.missedMembers)?[...new Set(body.missedMembers.map(String))]:[];
+      if(penalties.some(m=>!missing.includes(m)))return fail('Only missing members can receive a missed-submission loss.');
+      const ticket=await db().prepare('SELECT id FROM weekly_tickets WHERE season=? AND week=?').bind(s.season,s.activeWeek).first();
+      if(!ticket&&body.reviewedTicket!==true)return fail('Confirm that official ticket details are unavailable, or add them first.');
+      const version=picks.reduce((n,p)=>n+Number(p.revision),0);
+      if(Number(body.reviewVersion)!==version||Number(body.reviewCount)!==picks.length)return fail('Results changed since review. Refresh and review again.',409);
+      const id=`${s.season}|${s.activeWeek}`,now=new Date().toISOString();
+      const results=await db().batch([
+        db().prepare(`INSERT INTO weekly_cycles (id,season,week,pick_count,finalized_at)
+          SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM submissions WHERE season=? AND week=? AND status='Pending')
+          AND (SELECT COALESCE(SUM(revision),0) FROM submissions WHERE season=? AND week=?)=?
+          AND (SELECT COUNT(*) FROM submissions WHERE season=? AND week=?)=?
+          AND EXISTS (SELECT 1 FROM portal_settings WHERE id=1 AND season=? AND active_week=?)`).bind(id,s.season,s.activeWeek,picks.length,now,s.season,s.activeWeek,s.season,s.activeWeek,version,s.season,s.activeWeek,picks.length,s.season,s.activeWeek),
+        ...penalties.map(m=>db().prepare(`INSERT INTO missed_submissions (id,season,week,member,reason,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM weekly_cycles WHERE id=? AND finalized_at=?)`).bind(`${id}|${m}`,s.season,s.activeWeek,m,'No submission — commissioner-assigned loss',now,id,now)),
+        db().prepare(`UPDATE portal_settings SET active_week=active_week+1,submissions_open=1 WHERE season=? AND active_week=? AND EXISTS (SELECT 1 FROM weekly_cycles WHERE id=? AND finalized_at=?)`).bind(s.season,s.activeWeek,id,now),
+      ]);
+      if(!results[0].meta.changes)return fail('The week changed while finalizing. Refresh and review again.',409);
+      return Response.json({ok:true,nextWeek:s.activeWeek+1});
+    }
+    const season=String(body.season||'').trim(),week=Number(body.activeWeek),label=String(body.deadlineLabel||'').trim();
+    if(!season||!Number.isInteger(week)||week<0||week>30||!label)return fail('Check the season, week, and target submission time.');
+    await db().prepare('UPDATE portal_settings SET season=?,active_week=?,submissions_open=?,deadline_label=? WHERE id=1').bind(season,week,body.submissionsOpen?1:0,label).run();
+    return Response.json({ok:true});
+  }catch(error){console.error('portal_settings_failed');return fail(error instanceof Error&&/UNIQUE/.test(error.message)?'This week was already finalized. Refresh the board.':'The change could not be confirmed. Refresh before retrying.',409);}
 }

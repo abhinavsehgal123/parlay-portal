@@ -1,223 +1,101 @@
 import { env } from 'cloudflare:workers';
 import { isAdmin } from '@/lib/admin';
-
-const members = ['CJ', 'Brooks', 'Nav', 'Fab', 'Drew', 'Shan', 'Kith', 'Griff', 'Seed', 'Rohan', 'Ryser', 'Jp'];
-
-async function ready() {
-  await env.DB.batch([
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS submissions (
-      id TEXT PRIMARY KEY,
-      season TEXT NOT NULL DEFAULT '2026 Season',
-      week INTEGER NOT NULL,
-      member TEXT NOT NULL,
-      sport TEXT NOT NULL,
-      selection TEXT NOT NULL,
-      odds INTEGER NOT NULL,
-      stake REAL NOT NULL DEFAULT 1,
-      status TEXT NOT NULL DEFAULT 'Pending',
-      duplicate_key TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS portal_settings (
-      id INTEGER PRIMARY KEY,
-      season TEXT NOT NULL DEFAULT '2026 Season',
-      active_week INTEGER NOT NULL DEFAULT 1,
-      submissions_open INTEGER NOT NULL DEFAULT 1,
-      deadline_label TEXT NOT NULL DEFAULT 'Sunday, 12:45 PM ET'
-    )`),
-    env.DB.prepare("INSERT OR IGNORE INTO portal_settings (id, season, active_week, submissions_open, deadline_label) VALUES (1, '2026 Season', 1, 1, 'Sunday, 12:45 PM ET')"),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS weekly_cycles (
-      id TEXT PRIMARY KEY,
-      season TEXT NOT NULL,
-      week INTEGER NOT NULL,
-      pick_count INTEGER NOT NULL,
-      finalized_at TEXT NOT NULL,
-      UNIQUE(season, week)
-    )`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS weekly_tickets (
-      id TEXT PRIMARY KEY,
-      season TEXT NOT NULL,
-      week INTEGER NOT NULL,
-      combined_odds INTEGER,
-      wager REAL,
-      potential_payout REAL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(season, week)
-    )`),
-  ]);
-  const columns = await env.DB.prepare('PRAGMA table_info(submissions)').all();
-  if (!columns.results.some((column) => column.name === 'season')) {
-    try { await env.DB.prepare("ALTER TABLE submissions ADD COLUMN season TEXT NOT NULL DEFAULT '2026 Season'").run(); } catch { /* another request may have completed the migration */ }
-  }
-  const indexColumns = await env.DB.prepare('PRAGMA index_info(one_pick_per_member_week)').all();
-  const indexNames = indexColumns.results.map((column) => column.name);
-  if (indexNames.join(',') !== 'season,week,member') {
-    await env.DB.batch([
-      env.DB.prepare('DROP INDEX IF EXISTS one_pick_per_member_week'),
-      env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS one_pick_per_member_week ON submissions (season, week, member)'),
-    ]);
-  }
-  await env.DB.prepare("UPDATE submissions SET duplicate_key = season || '|' || duplicate_key WHERE duplicate_key NOT LIKE season || '|%'").run();
+import { db, decode, pickColumns, safeWrite } from '@/lib/portal-db';
+import { kickSync, queueStatement } from '@/lib/sheet-sync';
+import { members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
+const fail=(error:string,status=400)=>Response.json({error},{status});
+const settings=()=>db().prepare('SELECT season,active_week AS activeWeek,submissions_open AS submissionsOpen,deadline_label AS deadlineLabel FROM portal_settings WHERE id=1').first<{season:string;activeWeek:number;submissionsOpen:number;deadlineLabel:string}>();
+function audit(id:string,before:Partial<Pick>,after:Partial<Pick>,actor:string,action:string,reason:string,conditional=false) {
+  const p=after.id?after:before;
+  return db().prepare(`INSERT INTO pick_changes (id,submission_id,season,week,member,actor,action,before_json,after_json,reason,created_at) SELECT ?,?,?,?,?,?,?,?,?,?,? ${conditional?'WHERE changes() = 1':''}`)
+    .bind(id,p.id,p.season,p.week,p.member,actor,action,JSON.stringify(before),JSON.stringify(after),reason,new Date().toISOString());
 }
-
-export async function GET(request: Request) {
-  await ready();
-  const settings = await env.DB.prepare('SELECT season, active_week AS activeWeek, submissions_open AS submissionsOpen, deadline_label AS deadlineLabel FROM portal_settings WHERE id = 1').first();
-  const activeSeason = String(settings?.season ?? '2026 Season');
-  const activeWeek = Number(settings?.activeWeek ?? 1);
-  const [current, records, history, finalizations, tickets] = await Promise.all([
-    env.DB.prepare('SELECT id, season, week, member, sport, selection, odds, status, created_at AS createdAt FROM submissions WHERE season = ? AND week = ? ORDER BY created_at').bind(activeSeason, activeWeek).all(),
-    env.DB.prepare(`SELECT member,
-      SUM(CASE WHEN status = 'Hit' THEN 1 ELSE 0 END) AS wins,
-      SUM(CASE WHEN status = 'Miss' THEN 1 ELSE 0 END) AS losses,
-      SUM(CASE WHEN status = 'Push' THEN 1 ELSE 0 END) AS pushes,
-      COUNT(*) AS picks
-      FROM submissions WHERE season = ? GROUP BY member ORDER BY wins DESC, losses ASC, member ASC`).bind(activeSeason).all(),
-    env.DB.prepare('SELECT id, season, week, member, sport, selection, odds, status, created_at AS createdAt FROM submissions ORDER BY season DESC, week DESC, created_at ASC').all(),
-    env.DB.prepare('SELECT season, week, pick_count AS pickCount, finalized_at AS finalizedAt FROM weekly_cycles ORDER BY season DESC, week DESC').all(),
-    env.DB.prepare('SELECT season, week, combined_odds AS combinedOdds, wager, potential_payout AS potentialPayout, updated_at AS updatedAt FROM weekly_tickets ORDER BY season DESC, week DESC').all(),
-  ]);
-  const admin = isAdmin(request);
-  const activeTicket = tickets.results.find((ticket) => ticket.season === activeSeason && Number(ticket.week) === activeWeek) ?? null;
-  return Response.json({ week: activeWeek, open: Boolean(settings?.submissionsOpen), settings, ticket: activeTicket, tickets: tickets.results, isAdmin: admin, members, submissions: current.results, records: records.results, historySubmissions: history.results, finalizations: finalizations.results }, { headers: { 'Cache-Control': 'no-store' } });
+function validate(body:Record<string,unknown>,legacy=false) {
+  const sport=String(body.sport||'').trim(),odds=Number(body.odds),raw=body.details as Details|undefined;
+  const details:Details=raw?Object.fromEntries(['team','opponent','market','line','eventDate','description'].map(k=>[k,String(raw[k as keyof Details]||'').trim().slice(0,200)])):{};
+  if (!sport || sport.length>80 || !Number.isInteger(odds) || Math.abs(odds)<100 || Math.abs(odds)>1000000) throw Error('Enter a sport and valid American odds, such as −110 or +150.');
+  if (!legacy || details.market) {
+    if (!details.team || !details.opponent || !markets.includes(details.market||'') || !/^\d{4}-\d{2}-\d{2}$/.test(details.eventDate||'')) throw Error('Choose a market and enter the team/player, opponent, and event date.');
+    if (details.market==='Spread' && !/^[+-]\d+(\.\d+)?$/.test(details.line||'')) throw Error('Include the spread sign, for example -2.5 or +3.');
+    if (['Game total','Player prop','Other'].includes(details.market||'') && !details.description) throw Error('Describe the market, including over/under and the statistic.');
+    if (['Game total','Player prop'].includes(details.market||'') && !details.line) throw Error('Enter the total or prop threshold.');
+  }
+  const selection=details.market?selectionText(details):String(body.selection||'').trim();
+  if(selection.length<3 || selection.length>650) throw Error('Enter a clear selection.');
+  return {sport,odds,details,selection};
 }
-
-export async function POST(request: Request) {
-  let member = '';
-  let activeWeek = 0;
-  let stage = 'validation';
+export async function GET(request:Request) {
   try {
-    await ready();
-    const settings = await env.DB.prepare('SELECT season, active_week AS activeWeek, submissions_open AS submissionsOpen FROM portal_settings WHERE id = 1').first();
-    const season = String(settings?.season ?? '2026 Season');
-    activeWeek = Number(settings?.activeWeek ?? 1);
-    const body = await request.json() as Record<string, unknown>;
-    member = String(body.member ?? '').trim();
-    const sport = String(body.sport ?? '').trim();
-    const selection = String(body.selection ?? '').trim();
-    const odds = Number(body.odds);
-    if (!members.includes(member) || !sport || selection.length < 3 || !Number.isInteger(odds) || (odds > -100 && odds < 100)) {
-      return Response.json({ error: 'Check the member, sport, selection, and American odds.' }, { status: 400 });
-    }
-    if ((body.week !== undefined && Number(body.week) !== activeWeek) || (body.season !== undefined && body.season !== season)) {
-      return Response.json({ error: 'The active week has changed. Refresh the board before submitting.' }, { status: 409 });
-    }
-    const duplicateKey = `${season}|${activeWeek}|${selection.toLowerCase().replace(/\s+/g, ' ')}`;
-    // Check the authoritative record before calling the Sheet. Retrying a saved
-    // pick is safe, including when its original success response was lost.
-    const existing = await env.DB.prepare('SELECT id, season, week, member, sport, selection, odds, status, duplicate_key, created_at AS createdAt FROM submissions WHERE season = ? AND week = ? AND member = ? LIMIT 1').bind(season, activeWeek, member).first();
-    if (existing) {
-      if (existing.duplicate_key === duplicateKey && existing.sport === sport && Number(existing.odds) === odds) {
-        return Response.json({ ...existing, alreadySaved: true });
-      }
-      return Response.json({ error: `${member} already has a Week ${activeWeek} pick. Ask the commissioner to edit or remove it before submitting a replacement.` }, { status: 409 });
-    }
-    if (!settings?.submissionsOpen) return Response.json({ error: 'Submissions are currently closed.' }, { status: 403 });
-    const duplicate = await env.DB.prepare('SELECT member FROM submissions WHERE duplicate_key = ? LIMIT 1').bind(duplicateKey).first();
-    if (duplicate) return Response.json({ error: `That selection has already been submitted by ${duplicate.member} this week.` }, { status: 409 });
-    const id = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-    let sheetSynced = false;
-    if (env.PORTAL_SHEET_WEBHOOK_URL && env.PORTAL_SHEET_SECRET) {
-      stage = 'sheet';
-      const sheetResponse = await fetch(env.PORTAL_SHEET_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'content-type': 'text/plain;charset=utf-8' },
-        signal: AbortSignal.timeout(15000),
-        body: JSON.stringify({ secret: env.PORTAL_SHEET_SECRET, id, week: activeWeek, season, member, sport, selection, odds, stake: 1, notes: `${season} · Megalay Portal` }),
-      });
-      if (!sheetResponse.ok) throw new Error(`Sheet HTTP ${sheetResponse.status}`);
-      const sheetResult = await sheetResponse.json() as { ok?: boolean; error?: string };
-      if (!sheetResult.ok) {
-        console.error('submission_failed', { member, week: activeWeek, stage, reason: sheetResult.error });
-        return Response.json({ error: `Your pick was not saved to the portal. ${sheetResult.error ?? 'The connected sheet could not accept it.'} Please retry; if it persists, ask the commissioner to check the sheet.` }, { status: 502 });
-      }
-      sheetSynced = true;
-    }
-    stage = 'database';
-    await env.DB.prepare("INSERT INTO submissions (id, season, week, member, sport, selection, odds, stake, status, duplicate_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'Pending', ?, ?)")
-      .bind(id, season, activeWeek, member, sport, selection, odds, duplicateKey, createdAt).run();
-    console.info('submission_saved', { id, member, week: activeWeek });
-    return Response.json({ id, season, week: activeWeek, member, sport, selection, odds, status: 'Pending', createdAt, sheetSynced }, { status: 201 });
-  } catch (error) {
-    console.error('submission_failed', { member, week: activeWeek, stage, reason: error instanceof Error ? error.message : 'Unknown error' });
-    if (error instanceof SyntaxError && stage === 'validation') return Response.json({ error: 'The pick could not be read. Please try again.' }, { status: 400 });
-    return Response.json({ error: stage === 'sheet'
-      ? 'Your pick was not saved to the portal because the connected sheet did not respond correctly. Your form is still here; please retry.'
-      : 'We could not confirm your pick was saved. Refresh the board and retry if your pick is missing.' }, { status: stage === 'sheet' ? 502 : 503 });
-  }
+    const s=await settings(); if(!s)return fail('League settings are unavailable. Please retry.',503);
+    const admin=isAdmin(request);
+    const [p,c,f,t,m,q]=await Promise.all([
+      db().prepare(`SELECT ${pickColumns} FROM submissions ORDER BY season DESC,week DESC,created_at`).all(),
+      db().prepare('SELECT id,submission_id AS submissionId,season,week,member,actor,action,before_json,after_json,reason,created_at AS createdAt FROM pick_changes ORDER BY created_at DESC').all(),
+      db().prepare('SELECT season,week,pick_count AS pickCount,finalized_at AS finalizedAt FROM weekly_cycles ORDER BY season DESC,week DESC').all(),
+      db().prepare('SELECT season,week,combined_odds AS combinedOdds,wager,potential_payout AS potentialPayout FROM weekly_tickets').all(),
+      db().prepare('SELECT season,week,member,reason FROM missed_submissions').all(),
+      admin?db().prepare('SELECT id,attempts,error,payload FROM sheet_outbox ORDER BY created_at').all():Promise.resolve({results:[]}),
+    ]);
+    const history=p.results.map(decode);
+    kickSync();
+    return Response.json({settings:{...s,submissionsOpen:Boolean(s.submissionsOpen)},isAdmin:admin,submissions:history.filter(x=>x.season===s.season&&x.week===s.activeWeek),historySubmissions:history,
+      changes:c.results.map(x=>({...x,before:JSON.parse(String(x.before_json)),after:JSON.parse(String(x.after_json)),before_json:undefined,after_json:undefined})),finalizations:f.results,tickets:t.results,missedSubmissions:m.results,
+      ...(admin?{sync:{configured:Boolean(env.PORTAL_SHEET_WEBHOOK_URL&&env.PORTAL_SHEET_SECRET),pending:q.results.length,failed:q.results.filter(x=>Number(x.attempts)>0).length,items:q.results.map(x=>({id:x.id,attempts:x.attempts,error:x.error,member:JSON.parse(String(x.payload)).member||'Removed pick'}))}}:{})},{headers:{'Cache-Control':'no-store'}});
+  }catch{console.error('portal_read_failed');return fail('The board could not load. Please retry; saved picks are unchanged.',503);}
 }
-
-export async function PATCH(request: Request) {
-  await ready();
-  if (!isAdmin(request)) return Response.json({ error: 'Commissioner access required.' }, { status: 403 });
-  const body = await request.json() as Record<string, unknown>;
-  const id = String(body.id ?? '').trim();
-  const status = String(body.status ?? '').trim();
-  if (!id || !['Pending', 'Hit', 'Miss', 'Push'].includes(status)) {
-    return Response.json({ error: 'Choose a valid result.' }, { status: 400 });
-  }
-
-  const submission = await env.DB.prepare('SELECT id FROM submissions WHERE id = ? LIMIT 1').bind(id).first();
-  if (!submission) return Response.json({ error: 'That pick could not be found.' }, { status: 404 });
-
-  if (env.PORTAL_SHEET_WEBHOOK_URL && env.PORTAL_SHEET_SECRET) {
-    const sheetStatus = status === 'Hit' ? 'Win' : status === 'Miss' ? 'Loss' : status;
-    const sheetResponse = await fetch(env.PORTAL_SHEET_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ secret: env.PORTAL_SHEET_SECRET, action: 'updateStatus', id, status: sheetStatus }),
-    });
-    const sheetResult = await sheetResponse.json() as { ok?: boolean; error?: string };
-    if (!sheetResult.ok) {
-      return Response.json({ error: sheetResult.error ?? 'The Google Sheet could not update this result.' }, { status: 502 });
-    }
-  }
-
-  await env.DB.prepare('UPDATE submissions SET status = ? WHERE id = ?').bind(status, id).run();
-  return Response.json({ id, status });
+export async function POST(request:Request) {
+  if(!safeWrite(request))return fail('Invalid request origin.',403);
+  try {
+    const body=await request.json() as Record<string,unknown>,s=await settings();if(!s)return fail('League settings unavailable.',503);
+    if(body.season!==s.season||Number(body.week)!==s.activeWeek)return fail('The week changed. Refresh before submitting.',409);
+    const member=String(body.member||'');if(!members.includes(member))return fail('Choose your name.');
+    const fields=validate(body),key=`${s.season}|${s.activeWeek}|${fields.selection.toLowerCase().replace(/\s+/g,' ')}`;
+    const existing=await db().prepare(`SELECT ${pickColumns} FROM submissions WHERE season=? AND week=? AND member=?`).bind(s.season,s.activeWeek,member).first();
+    if(existing){if(existing.selection===fields.selection&&Number(existing.odds)===fields.odds&&existing.sport===fields.sport)return Response.json({...decode(existing),alreadySaved:true});return fail(`${member} already has a pick. Use Edit on their card to replace it.`,409);}
+    if(!s.submissionsOpen)return fail('Submissions are manually closed. Ask the commissioner to reopen them.',403);
+    if(await db().prepare('SELECT id FROM submissions WHERE duplicate_key=?').bind(key).first())return fail('That selection is already on the board.',409);
+    const now=new Date().toISOString(),id=crypto.randomUUID(),changeId=crypto.randomUUID();
+    const pick:Pick={id,season:s.season,week:s.activeWeek,member,...fields,status:'Pending',createdAt:now,updatedAt:now,revision:0,evidence:{}};
+    const saved=await db().batch([db().prepare(`INSERT INTO submissions (id,season,week,member,sport,selection,odds,status,duplicate_key,created_at,updated_at,details,evidence,revision)
+      SELECT ?,?,?,?,?,?,?,'Pending',?,?,?,?,'{}',0
+      WHERE EXISTS (SELECT 1 FROM portal_settings WHERE id=1 AND season=? AND active_week=? AND submissions_open=1)
+      AND NOT EXISTS (SELECT 1 FROM weekly_cycles WHERE season=? AND week=?)
+      AND NOT EXISTS (SELECT 1 FROM submissions WHERE duplicate_key=?)`)
+      .bind(id,s.season,s.activeWeek,member,fields.sport,fields.selection,fields.odds,key,now,now,JSON.stringify(fields.details),s.season,s.activeWeek,s.season,s.activeWeek,key),audit(changeId,{},pick,`${member} (honor system)`,'Submitted','',true),queueStatement(id,pick,changeId,changeId)]);
+    if(!saved[0].meta.changes)return fail('The board changed before your pick saved. Refresh and review before retrying.',409);
+    kickSync();return Response.json(pick,{status:201});
+  }catch(error){if(error instanceof Error&&/UNIQUE/.test(error.message))return fail('A pick was just submitted. Refresh before trying again.',409);if(error instanceof Error&&/^(Enter|Choose|Include|Describe)/.test(error.message))return fail(error.message);console.error('portal_submit_failed');return fail('We could not confirm the save. Check the board before retrying. Your form is kept.',503);}
 }
-
-export async function PUT(request: Request) {
-  await ready();
-  if (!isAdmin(request)) return Response.json({ error: 'Commissioner access required.' }, { status: 403 });
-  const body = await request.json() as Record<string, unknown>;
-  const id = String(body.id ?? '').trim();
-  const sport = String(body.sport ?? '').trim();
-  const selection = String(body.selection ?? '').trim();
-  const odds = Number(body.odds);
-  if (!id || !sport || selection.length < 3 || !Number.isInteger(odds) || (odds > -100 && odds < 100)) {
-    return Response.json({ error: 'Check the sport, selection, and American odds.' }, { status: 400 });
-  }
-  const existing = await env.DB.prepare('SELECT season, week FROM submissions WHERE id = ? LIMIT 1').bind(id).first();
-  if (!existing) return Response.json({ error: 'That pick could not be found.' }, { status: 404 });
-  const duplicateKey = `${String(existing.season)}|${Number(existing.week)}|${selection.toLowerCase().replace(/\s+/g, ' ')}`;
-  const duplicate = await env.DB.prepare('SELECT id FROM submissions WHERE duplicate_key = ? AND id != ? LIMIT 1').bind(duplicateKey, id).first();
-  if (duplicate) return Response.json({ error: 'That selection has already been submitted this week.' }, { status: 409 });
-
-  if (env.PORTAL_SHEET_WEBHOOK_URL && env.PORTAL_SHEET_SECRET) {
-    const response = await fetch(env.PORTAL_SHEET_WEBHOOK_URL, { method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ secret: env.PORTAL_SHEET_SECRET, action: 'updateSubmission', id, sport, selection, odds }) });
-    const result = await response.json() as { ok?: boolean; error?: string };
-    if (!result.ok) return Response.json({ error: result.error ?? 'The Google Sheet could not update this pick.' }, { status: 502 });
-  }
-  await env.DB.prepare('UPDATE submissions SET sport = ?, selection = ?, odds = ?, duplicate_key = ? WHERE id = ?').bind(sport, selection, odds, duplicateKey, id).run();
-  return Response.json({ id, sport, selection, odds });
+async function mutate(request:Request,action:'edit'|'grade'|'remove') {
+  if(!safeWrite(request))return fail('Invalid request origin.',403);
+  try {
+    const admin=isAdmin(request),body=await request.json() as Record<string,unknown>;
+    if(action!=='edit'&&!admin)return fail('Admin access required.',403);
+    const row=await db().prepare(`SELECT ${pickColumns} FROM submissions WHERE id=?`).bind(String(body.id||'')).first();if(!row)return fail('This pick no longer exists. Refresh the board.',404);
+    const before=decode(row) as Pick;
+    if(Number(body.revision)!==before.revision)return fail('This pick changed while you were editing. Close and reopen it to review the latest version.',409);
+    if(!admin){const s=await settings();if(body.member!==before.member||body.confirmOwnPick!==true)return fail('Confirm that you are changing your own pick.',403);if(s?.season!==before.season||s.activeWeek!==before.week||before.status!=='Pending')return fail('Only current, ungraded picks can be edited by members. Ask the commissioner for a correction.',403);}
+    const reason=String(body.reason||'').trim().slice(0,1000);if(admin&&!reason)return fail('Add a short reason or result note for the change history.');
+    const now=new Date().toISOString(),changeId=crypto.randomUUID();let after:Pick={...before,revision:before.revision+1,updatedAt:now};let statement:D1PreparedStatement;
+    if(action==='edit'){
+      const fields=validate(body,!before.details.market),key=`${before.season}|${before.week}|${fields.selection.toLowerCase().replace(/\s+/g,' ')}`;
+      if(await db().prepare('SELECT id FROM submissions WHERE duplicate_key=? AND id!=?').bind(key,before.id).first())return fail('That selection is already on the board.',409);
+      after={...after,...fields,status:'Pending',evidence:{}};
+      statement=db().prepare(`UPDATE submissions SET sport=?,selection=?,odds=?,details=?,duplicate_key=?,status='Pending',evidence='{}',revision=revision+1,updated_at=? WHERE id=? AND revision=?
+        AND NOT EXISTS (SELECT 1 FROM submissions other WHERE other.duplicate_key=? AND other.id!=submissions.id)
+        ${admin?'':`AND status='Pending' AND EXISTS (SELECT 1 FROM portal_settings WHERE id=1 AND season=submissions.season AND active_week=submissions.week) AND NOT EXISTS (SELECT 1 FROM weekly_cycles WHERE season=submissions.season AND week=submissions.week)`}`)
+        .bind(fields.sport,fields.selection,fields.odds,JSON.stringify(fields.details),key,now,before.id,before.revision,key);
+    }else if(action==='grade'){
+      const status=String(body.status);if(!['Pending','Hit','Miss','Push','Void'].includes(status))return fail('Choose a valid result.');const source=String(body.source||'').trim();if(source&&!/^https?:\/\//i.test(source))return fail('Use a full http or https evidence link.');
+      after={...after,status:status as Pick['status'],evidence:{result:String(body.result||'').slice(0,1000),source:source.slice(0,2000),reason,gradedAt:now}};
+      statement=db().prepare('UPDATE submissions SET status=?,evidence=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?').bind(status,JSON.stringify(after.evidence),now,before.id,before.revision);
+    }else statement=db().prepare('DELETE FROM submissions WHERE id=? AND revision=?').bind(before.id,before.revision);
+    const payload=action==='remove'?{action:'deleteSubmission',id:before.id,member:before.member}:after;
+    const results=await db().batch([statement,audit(changeId,before,action==='remove'?{}:after,admin?'Commissioner':`${before.member} (honor system)`,action,reason,true),queueStatement(before.id,payload,changeId,changeId)]);
+    if(!results[0].meta.changes)return fail('Another change was saved first. Refresh and try again.',409);
+    kickSync();return Response.json({ok:true,pick:action==='remove'?null:after});
+  }catch(error){if(error instanceof Error&&/^(Enter|Choose|Include|Describe)/.test(error.message))return fail(error.message);console.error('portal_update_failed');return fail('The change could not be confirmed. Refresh before retrying.',503);}
 }
-
-export async function DELETE(request: Request) {
-  await ready();
-  if (!isAdmin(request)) return Response.json({ error: 'Commissioner access required.' }, { status: 403 });
-  const body = await request.json() as Record<string, unknown>;
-  const id = String(body.id ?? '').trim();
-  if (!id) return Response.json({ error: 'Choose a pick to remove.' }, { status: 400 });
-  const existing = await env.DB.prepare('SELECT id FROM submissions WHERE id = ? LIMIT 1').bind(id).first();
-  if (!existing) return Response.json({ error: 'That pick could not be found.' }, { status: 404 });
-
-  if (env.PORTAL_SHEET_WEBHOOK_URL && env.PORTAL_SHEET_SECRET) {
-    const response = await fetch(env.PORTAL_SHEET_WEBHOOK_URL, { method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ secret: env.PORTAL_SHEET_SECRET, action: 'deleteSubmission', id }) });
-    const result = await response.json() as { ok?: boolean; error?: string };
-    if (!result.ok) return Response.json({ error: result.error ?? 'The Google Sheet could not remove this pick.' }, { status: 502 });
-  }
-  await env.DB.prepare('DELETE FROM submissions WHERE id = ?').bind(id).run();
-  return Response.json({ id, deleted: true });
-}
+export const PUT=(r:Request)=>mutate(r,'edit');
+export const PATCH=(r:Request)=>mutate(r,'grade');
+export const DELETE=(r:Request)=>mutate(r,'remove');
