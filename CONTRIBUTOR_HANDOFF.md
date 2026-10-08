@@ -43,3 +43,11 @@ Never commit secrets or production-data exports. Use synthetic local test data a
 ## Migration caution
 
 Do not rewrite existing migrations or metadata. The older manually applied 0005_weekly_tickets.sql was absent from the old Drizzle journal; 0006_portal_usability.sql reconciles that history. Inspect it before generating future migrations; do not renumber files casually.
+
+## Odds API server configuration — 2026-10-08
+
+`ODDS_API_KEY` is configured as a secret in the existing production Sites project. Version 26 was redeployed successfully with environment revision 7 on 2026-10-08 to activate it. The value is intentionally not stored in GitHub, this handoff, or application source.
+
+Server-only usage: import `env` from `cloudflare:workers` and read `env.ODDS_API_KEY`. Add `ODDS_API_KEY?: string` to `Cloudflare.Env` in `db/env.d.ts` as part of the consuming implementation, checking for any concurrent declaration first. Treat a missing key as a configuration error without returning or logging its value. Do not expose it through client bundles, public environment prefixes, API responses, or logged request URLs.
+
+For local development, use an independently provided key in an ignored `.dev.vars` file; production secrets are not automatically transferred to Claude's environment. This configuration change does not implement the Odds API integration or validate the provider key/quota. Claude may proceed with the server integration knowing the production variable exists. No application code or production picks changed during this configuration update.
