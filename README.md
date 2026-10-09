@@ -15,7 +15,7 @@ Use the local URL printed by the development server. The app uses React, Vinext/
 
 ```sh
 npm run lint
-node --test tests/submissions.test.mjs
+node --test tests/*.test.mjs
 npm run build
 ```
 
@@ -27,6 +27,7 @@ Runtime settings are declared in `db/env.d.ts`. For local Worker development, pu
 - `PORTAL_COMMISSIONER_SESSION`: development session secret.
 - `PORTAL_ADMIN_EMAIL`: optional trusted Sites identity for admin access.
 - `PORTAL_SHEET_WEBHOOK_URL` and `PORTAL_SHEET_SECRET`: optional Google Sheets integration; leave both unset for database-only development.
+- `ODDS_API_KEY`: optional The Odds API key for the FanDuel lines browser. Leave it unset locally and the browser shows "unavailable" while manual entry keeps working.
 
 Google Apps Script source is in `google-apps-script/Code.gs`. Its `PORTAL_SECRET` script property must match the configured webhook secret when that integration is enabled.
 

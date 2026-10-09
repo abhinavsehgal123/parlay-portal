@@ -19,7 +19,7 @@ The production checkpoint passed TypeScript checks, the production build, and al
 Commands after npm ci:
 
 ```
-node --test tests/submissions.test.mjs
+node --test tests/*.test.mjs
 node node_modules/typescript/bin/tsc --noEmit
 npm run build
 ```
@@ -51,3 +51,13 @@ Do not rewrite existing migrations or metadata. The older manually applied 0005_
 Server-only usage: import `env` from `cloudflare:workers` and read `env.ODDS_API_KEY`. Add `ODDS_API_KEY?: string` to `Cloudflare.Env` in `db/env.d.ts` as part of the consuming implementation, checking for any concurrent declaration first. Treat a missing key as a configuration error without returning or logging its value. Do not expose it through client bundles, public environment prefixes, API responses, or logged request URLs.
 
 For local development, use an independently provided key in an ignored `.dev.vars` file; production secrets are not automatically transferred to Claude's environment. This configuration change does not implement the Odds API integration or validate the provider key/quota. Claude may proceed with the server integration knowing the production variable exists. No application code or production picks changed during this configuration update.
+
+## FanDuel odds browser — 2026-10-09 (Claude)
+
+The submit and edit dialogs include a "Find it on FanDuel" browser. Tapping a game line fills in the pick's market, team, opponent, line, event date, and odds; members can still edit everything, and manual entry is unchanged. Game lines only (moneyline, spread, total, plus the draw price for soccer). Player props are not fetched.
+
+- Server: `lib/odds.ts` and `GET /api/odds?sport=<key>`. Sports: NFL, College Football, NBA, College Basketball, MLB, NHL, Premier League, Champions League (both soccer leagues save as the portal's `Soccer` sport).
+- Free-plan budget: one sport refresh costs 3 credits. Lines are cached per sport for 4 hours and fetched only when someone browses that sport. Refreshes stop at 100 credits per week (weeks start Monday, Eastern; at most about 430 a month) or when the provider reports fewer than 25 credits left, after which the last lines are shown with a "paused" note. The budget is weekly because the league browses mostly before each Thursday target. A failed refresh is not retried for 10 minutes. Tune the constants at the top of `lib/odds.ts`.
+- The key is read only on the server and is never logged or returned; the request URL carrying it is never logged.
+- Migration `0007_odds_cache.sql` adds the `odds_cache` and `odds_usage` tables (additive). drizzle-kit names new files by journal index, so it proposed `0006_…`; it was renamed to `0007` with a matching journal tag. Its snapshot is `meta/0006_snapshot.json`, following the index-based snapshot naming.
+- Picks filled from the browser store `details.feedAt` (when the odds were fetched). Any manual edit to the filled fields clears it. Pick cards show "Line filled from FanDuel feed, <time>".

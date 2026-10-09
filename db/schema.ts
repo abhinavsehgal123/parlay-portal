@@ -82,3 +82,16 @@ export const syncLease = sqliteTable('sync_lease', {
   token: text('token').notNull(),
   expires: integer('expires').notNull(),
 });
+
+export const oddsCache = sqliteTable('odds_cache', {
+  sportKey: text('sport_key').primaryKey(),
+  payload: text('payload').notNull().default('[]'),
+  fetchedAt: integer('fetched_at').notNull().default(0),
+  attemptAt: integer('attempt_at').notNull().default(0),
+});
+
+export const oddsUsage = sqliteTable('odds_usage', {
+  weekStart: text('week_start').primaryKey(),
+  credits: integer('credits').notNull().default(0),
+  remaining: integer('remaining'),
+});
