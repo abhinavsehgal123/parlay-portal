@@ -32,7 +32,13 @@ Both endpoints take only `PORTAL_GRADER_TOKEN`. That token can read pending pick
 
 1. **Make a token.** Create a random value of 32+ characters, for example from a password manager.
 2. **GitHub.** Add the token as the repository secret `PORTAL_GRADER_TOKEN`. Then run **Deploy to Cloudflare** once so the site picks it up.
-3. **Claude environment.** In the Claude Code cloud environment the routine runs in, add the same value as the environment variable `PORTAL_GRADER_TOKEN`. To get there, open the environment menu in a session's title bar and choose **Edit**.
-4. **Network.** The environment's network access must allow `off-league-megalay.abhinavsehgal55.workers.dev`. It already does today.
+3. **Claude environment.** Add a **network secret** to the Claude Code cloud environment the routines run in. To get there on claude.ai/code, open the environment menu in a session's title bar and choose **Edit**. Fill it in as:
+   - **Name:** `PORTAL_GRADER_TOKEN`.
+   - **Secret type:** Bearer.
+   - **Allowed website:** `off-league-megalay.abhinavsehgal55.workers.dev`.
+   - **Path prefix:** `/api/grade`.
+   - **Header:** `Authorization`, prefix `Bearer`, value the same token.
+
+   Claude never sees the value; it's attached only to requests to the grading address, so the routines send no Authorization header themselves.
 
 Never paste the token into chat, commits or logs.
