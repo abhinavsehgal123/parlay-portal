@@ -42,6 +42,8 @@ export const weeklyTickets = sqliteTable('weekly_tickets', {
   wager: real('wager'),
   potentialPayout: real('potential_payout'),
   updatedAt: text('updated_at').notNull(),
+  result: text('result').notNull().default(''),
+  resultNote: text('result_note').notNull().default(''),
 }, (table) => [uniqueIndex('one_ticket_per_season_week').on(table.season, table.week)]);
 
 export const missedSubmissions = sqliteTable('missed_submissions', {

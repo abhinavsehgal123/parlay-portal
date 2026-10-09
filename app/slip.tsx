@@ -2,7 +2,7 @@
 import { Fragment,useState } from 'react';
 import { ChevronDown,Pencil,Search,X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatOdds,statusLabel,type Board,type Pick,type Status } from '@/lib/portal';
+import { formatOdds,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
 
 // Picks are shown as a printed parlay ticket: a row per leg, grouped by game
 // day, with members who have not picked yet listed last. Tapping a row opens
@@ -13,6 +13,8 @@ const dayLabel=(d?:string)=>{
   if(!d||!/^\d{4}-\d{2}-\d{2}$/.test(d))return 'Date not set';
   return new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:'UTC'});
 };
+// A pick as it stood in a change-history entry; details recorded after the fact may be missing.
+const snapshot=(p:Partial<Pick>)=>[p.selection,typeof p.odds==='number'?formatOdds(p.odds):'',p.status?statusLabel(p.status):''].filter(Boolean).join(', ');
 export const bigOdds=(n:number)=>`${n>0?'+':''}${n.toLocaleString('en-US')}`;
 export function Stamp({status}:{status:Status}){return <span className={`stamp stamp-${status.toLowerCase()}`}>{shortStatus[status]}</span>;}
 
@@ -58,7 +60,7 @@ function Leg({pick,board,archived,open,terms,onToggle,onEdit,onGrade,onRemove}:L
       {pick.evidence.source&&/^https?:\/\//i.test(pick.evidence.source)&&<a className="mt-2 inline-block text-sm font-semibold underline" href={pick.evidence.source} target="_blank" rel="noreferrer">Result source</a>}
       <p className="leg-note">Submitted {time(pick.createdAt)}{pick.revision>0?`, updated ${time(pick.updatedAt)}`:''}{d.feedAt?`. Line filled from FanDuel feed, ${time(d.feedAt)}`:''}</p>
       <div className="mt-3 flex flex-wrap gap-2">{(board.isAdmin||(!archived&&pick.status==='Pending'))&&<Button variant="outline" onClick={()=>onEdit(pick)}><Pencil className="size-4"/>{board.isAdmin?'Edit pick':'Edit my pick'}</Button>}{board.isAdmin&&<><Button variant="outline" onClick={()=>onGrade(pick)}>Record result</Button><Button variant="ghost" className="text-[var(--loss)]" onClick={()=>onRemove(pick)}>Remove</Button></>}</div>
-      {changes.length>0&&<details className="leg-history"><summary>Change history ({changes.length})</summary><ol>{changes.map(c=><li key={c.id}><p className="font-semibold">{c.action} by {c.actor}</p><p className="text-xs text-[var(--ink-2)]">{time(c.createdAt)}</p>{c.before.selection&&<p>Before: {c.before.selection}, {formatOdds(c.before.odds!)}, {statusLabel(c.before.status!)}</p>}{c.after.selection&&<p>After: {c.after.selection}, {formatOdds(c.after.odds!)}, {statusLabel(c.after.status!)}</p>}{c.reason&&<p>{c.reason}</p>}</li>)}</ol></details>}
+      {changes.length>0&&<details className="leg-history"><summary>Change history ({changes.length})</summary><ol>{changes.map(c=><li key={c.id}><p className="font-semibold">{c.action} by {c.actor}</p><p className="text-xs text-[var(--ink-2)]">{time(c.createdAt)}</p>{c.before.selection&&<p>Before: {snapshot(c.before)}</p>}{c.after.selection&&<p>After: {snapshot(c.after)}</p>}{c.reason&&<p>{c.reason}</p>}</li>)}</ol></details>}
     </div>}
   </li>;
 }
@@ -100,7 +102,7 @@ export function PickSearch({query,filter,onQuery,onFilter,label,placeholder}:{qu
 export const filterLabel=(f:string)=>resultFilters.find(x=>x[0]===f)?.[1].toLowerCase()??'';
 
 // This week's ticket: odds and payout up top, a perforation, then the legs.
-export function Ticket({board,picks,missing,members,ticket,outcome,onCopy,...actions}:LegActions&{board:Board;picks:Pick[];missing:string[];members:string[];ticket?:{combinedOdds:number;wager:number;potentialPayout:number};outcome:string;onCopy:()=>void}) {
+export function Ticket({board,picks,missing,members,ticket,outcome,onCopy,...actions}:LegActions&{board:Board;picks:Pick[];missing:string[];members:string[];ticket?:TicketRecord;outcome:string;onCopy:()=>void}) {
   const money=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:n%1?2:0}).format(n);
   const [query,setQuery]=useState(''),[filter,setFilter]=useState('all');
   const searching=query.trim().length>0||filter!=='all';
@@ -111,7 +113,7 @@ export function Ticket({board,picks,missing,members,ticket,outcome,onCopy,...act
     <header className="ticket-head">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div><h2 className="ticket-title">Week {board.settings.activeWeek} Megalay</h2><p className="text-sm text-[var(--ink-2)]">{outcome}</p></div>
-        <div className="sm:text-right">{ticket?<><p className="ticket-odds">{bigOdds(ticket.combinedOdds)}</p><p className="text-sm text-[var(--ink-2)]">{money(ticket.wager)} pays <strong className="text-[var(--ink)]">{money(ticket.potentialPayout)}</strong></p></>:<p className="max-w-[15rem] text-sm text-[var(--ink-2)]">Ticket odds appear once the commissioner records the ticket.</p>}</div>
+        <div className="sm:text-right">{ticket&&ticket.combinedOdds!==null?<><p className="ticket-odds">{bigOdds(ticket.combinedOdds)}</p>{ticket.wager!==null&&ticket.potentialPayout!==null&&<p className="text-sm text-[var(--ink-2)]">{money(ticket.wager)} pays <strong className="text-[var(--ink)]">{money(ticket.potentialPayout)}</strong></p>}</>:<p className="max-w-[15rem] text-sm text-[var(--ink-2)]">Ticket odds appear once the commissioner records the ticket.</p>}</div>
       </div>
       <div className="mt-4"><Tracker picks={picks} members={members}/></div>
     </header>

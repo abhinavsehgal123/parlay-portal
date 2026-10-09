@@ -34,7 +34,7 @@ for (const c of board.changes ?? []) out.push(row('pick_changes', {
   before_json: JSON.stringify(c.before ?? {}), after_json: JSON.stringify(c.after ?? {}), reason: c.reason ?? '', created_at: c.createdAt,
 }));
 for (const f of board.finalizations ?? []) out.push(row('weekly_cycles', { id: `${f.season}|${f.week}`, season: f.season, week: f.week, pick_count: f.pickCount, finalized_at: f.finalizedAt }));
-for (const t of board.tickets ?? []) out.push(row('weekly_tickets', { id: `${t.season}|${t.week}`, season: t.season, week: t.week, combined_odds: t.combinedOdds, wager: t.wager, potential_payout: t.potentialPayout, updated_at: snapshotAt }));
+for (const t of board.tickets ?? []) out.push(row('weekly_tickets', { id: `${t.season}|${t.week}`, season: t.season, week: t.week, combined_odds: t.combinedOdds, wager: t.wager, potential_payout: t.potentialPayout, updated_at: snapshotAt, ...(t.result === undefined ? {} : { result: t.result, result_note: t.resultNote ?? '' }) }));
 for (const m of board.missedSubmissions ?? []) {
   const finalized = (board.finalizations ?? []).find(f => f.season === m.season && f.week === m.week)?.finalizedAt;
   out.push(row('missed_submissions', { id: `${m.season}|${m.week}|${m.member}`, season: m.season, week: m.week, member: m.member, reason: m.reason, created_at: finalized ?? snapshotAt }));

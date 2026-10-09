@@ -34,7 +34,7 @@ export async function GET(request:Request) {
       db().prepare(`SELECT ${pickColumns} FROM submissions ORDER BY season DESC,week DESC,created_at`).all(),
       db().prepare('SELECT id,submission_id AS submissionId,season,week,member,actor,action,before_json,after_json,reason,created_at AS createdAt FROM pick_changes ORDER BY created_at DESC').all(),
       db().prepare('SELECT season,week,pick_count AS pickCount,finalized_at AS finalizedAt FROM weekly_cycles ORDER BY season DESC,week DESC').all(),
-      db().prepare('SELECT season,week,combined_odds AS combinedOdds,wager,potential_payout AS potentialPayout FROM weekly_tickets').all(),
+      db().prepare('SELECT season,week,combined_odds AS combinedOdds,wager,potential_payout AS potentialPayout,result,result_note AS resultNote FROM weekly_tickets').all(),
       db().prepare('SELECT season,week,member,reason FROM missed_submissions').all(),
       admin?db().prepare('SELECT id,attempts,error,payload FROM sheet_outbox ORDER BY created_at').all():Promise.resolve({results:[]}),
       admin?db().prepare('SELECT started_at AS startedAt,finished_at AS finishedAt,graded,note,(SELECT COALESCE(SUM(credits),0) FROM results_runs r WHERE r.week_start=results_runs.week_start) AS weekCredits FROM results_runs ORDER BY started_at DESC LIMIT 1').first():Promise.resolve(null),

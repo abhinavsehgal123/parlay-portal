@@ -18,7 +18,8 @@ export type Evidence = { result?: string; source?: string; reason?: string; grad
 export type Pick = { id: string; season: string; week: number; member: string; sport: string; selection: string; odds: number; status: Status; createdAt: string; updatedAt: string; revision: number; details: Details; evidence: Evidence };
 export type Settings = { season: string; activeWeek: number; submissionsOpen: boolean; deadlineLabel: string };
 export type Change = { id: string; submissionId: string; season: string; week: number; member: string; actor: string; action: string; before: Partial<Pick>; after: Partial<Pick>; reason: string; createdAt: string };
-export type Ticket = { season: string; week: number; combinedOdds: number; wager: number; potentialPayout: number };
+// result is the commissioner's official ticket outcome ('Won' or 'Lost'), set when it differs from what the legs alone show.
+export type Ticket = { season: string; week: number; combinedOdds: number | null; wager: number | null; potentialPayout: number | null; result?: string; resultNote?: string };
 export type Board = { settings: Settings; isAdmin: boolean; submissions: Pick[]; historySubmissions: Pick[]; changes: Change[]; finalizations: {season:string;week:number;finalizedAt:string}[]; tickets: Ticket[]; missedSubmissions: {season:string;week:number;member:string;reason:string}[]; sync?: { configured:boolean; pending:number; failed:number; items:{id:string;attempts:number;error:string;member:string}[] }; results?: { startedAt:number; finishedAt:number; graded:number; note:string; weekCredits:number } | null };
 export const formatOdds = (n: number) => `${n > 0 ? '+' : ''}${n}`;
 export const statusLabel = (s: Status) => ({Pending:'Awaiting result',Hit:'Win',Miss:'Loss',Push:'Push',Void:'Void'}[s]);
