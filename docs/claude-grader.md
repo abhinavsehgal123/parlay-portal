@@ -8,8 +8,14 @@ Final scores settle moneylines, spreads and totals automatically (`check-scores.
 
 ## How it works
 
-- **Schedule.** The routine runs Monday and Tuesday mornings (ET), after the weekend's and Monday night's games.
-- **Reading picks.** It reads `GET /api/grade`: pending picks whose game date isn't in the future.
+- **Schedule.** Four routines with the same instructions run after each game window (all ET):
+  - Thursday, Friday and Saturday at 11:52 PM;
+  - Sunday at 4:52 PM and 8:52 PM;
+  - Monday at 12:52 AM, after Sunday night's game;
+  - Tuesday at 8:52 AM, after Monday night's game, plus anything left over.
+
+  Games dated today are graded only once a source shows them final.
+- **Reading picks.** Each run reads `GET /api/grade`: pending picks whose game date isn't in the future.
 - **Researching.** For each pick, it finds the official result or box score and posts a grade to `POST /api/grade`. Each grade includes:
   - the stat or score it relied on;
   - a source link;
