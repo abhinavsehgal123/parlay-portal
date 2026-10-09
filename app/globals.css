@@ -171,6 +171,12 @@ button.leg-summary:hover { background: var(--paper-2); }
 .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 1rem; color: var(--ink); }
 .search input::placeholder { color: #7b8a81; }
 .search input::-webkit-search-cancel-button { appearance: none; }
+.search-paper { min-height: 44px; background: var(--paper-2); border: 1px solid var(--rule); padding-right: .35rem; }
+.search-clear { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 999px; color: var(--ink-2); }
+.search-clear:hover { background: var(--rule); color: var(--ink); }
+.fchip.fchip-paper { color: var(--ink); border-color: #c4d0c7; min-height: 36px; }
+.fchip.fchip-paper:hover { border-color: var(--ink); }
+.fchip.fchip-paper[aria-pressed='true'] { background: var(--flag); border-color: var(--flag); color: var(--ink); }
 .fchip { min-height: 38px; padding: 0 .95rem; border-radius: 999px; border: 1.5px solid rgba(243,247,242,.35); color: var(--chalk); font-weight: 600; font-size: .875rem; white-space: nowrap; }
 .fchip:hover { border-color: var(--chalk); }
 .fchip[aria-pressed='true'] { background: var(--flag); border-color: var(--flag); color: var(--ink); }

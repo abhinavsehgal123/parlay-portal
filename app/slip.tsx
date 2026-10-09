@@ -1,6 +1,6 @@
 'use client';
 import { Fragment,useState } from 'react';
-import { ChevronDown,Pencil } from 'lucide-react';
+import { ChevronDown,Pencil,Search,X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatOdds,statusLabel,type Board,type Pick,type Status } from '@/lib/portal';
 
@@ -88,9 +88,25 @@ export function Tracker({picks,members}:{picks:Pick[];members:string[]}) {
   </div>;
 }
 
+const resultFilters=[['all','All'],['Pending','Pending'],['Hit','Won'],['Miss','Lost'],['push','Push or void']] as const;
+// A search box and result filters that sit right above the legs they filter.
+export function PickSearch({query,filter,onQuery,onFilter,label,placeholder}:{query:string;filter:string;onQuery:(q:string)=>void;onFilter:(f:string)=>void;label:string;placeholder:string}) {
+  const clear=()=>{onQuery('');onFilter('all');};
+  return <div className="space-y-2.5">
+    <label className="search search-paper"><Search aria-hidden="true" className="size-[18px] shrink-0 text-[var(--ink-2)]"/><span className="sr-only">{label}</span><input type="search" value={query} onChange={e=>onQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape')clear();}} placeholder={placeholder}/>{(query||filter!=='all')&&<button type="button" className="search-clear" aria-label="Clear search" onClick={clear}><X className="size-4"/></button>}</label>
+    <fieldset className="m-0 min-w-0 border-0 p-0"><legend className="sr-only">Filter by result</legend><div className="flex gap-2 overflow-x-auto pb-1">{resultFilters.map(([key,text])=><button key={key} type="button" className="fchip fchip-paper" aria-pressed={filter===key} onClick={()=>onFilter(key)}>{text}</button>)}</div></fieldset>
+  </div>;
+}
+export const filterLabel=(f:string)=>resultFilters.find(x=>x[0]===f)?.[1].toLowerCase()??'';
+
 // This week's ticket: odds and payout up top, a perforation, then the legs.
 export function Ticket({board,picks,missing,members,ticket,outcome,onCopy,...actions}:LegActions&{board:Board;picks:Pick[];missing:string[];members:string[];ticket?:{combinedOdds:number;wager:number;potentialPayout:number};outcome:string;onCopy:()=>void}) {
   const money=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:n%1?2:0}).format(n);
+  const [query,setQuery]=useState(''),[filter,setFilter]=useState('all');
+  const searching=query.trim().length>0||filter!=='all';
+  const {terms,hits}=searchPicks(picks,query.trim(),filter);
+  // Members still to pick show up when their name is searched; result filters hide them.
+  const shownMissing=!searching?missing:filter==='all'?missing.filter(m=>terms.every(t=>m.toLowerCase().includes(t))):[];
   return <article className="ticket" aria-label={`Week ${board.settings.activeWeek} ticket`}>
     <header className="ticket-head">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
@@ -100,7 +116,8 @@ export function Ticket({board,picks,missing,members,ticket,outcome,onCopy,...act
       <div className="mt-4"><Tracker picks={picks} members={members}/></div>
     </header>
     <div className="perforation" aria-hidden="true"/>
-    <Slip picks={picks} missing={missing} board={board} {...actions}/>
+    <div className="px-5 pb-3 pt-4"><PickSearch query={query} filter={filter} onQuery={setQuery} onFilter={setFilter} label="Search this week's picks" placeholder="Team, player or member"/>{searching&&<p className="mt-2 text-sm text-[var(--ink-2)]" aria-live="polite">{hits.length===1?'1 pick':`${hits.length} picks`} of {picks.length}{filter!=='all'?`, ${filterLabel(filter)} only`:''}.</p>}</div>
+    {searching&&!hits.length&&!shownMissing.length?<p className="border-t border-[var(--rule)] px-5 py-6 text-[var(--ink-2)]">No picks on this ticket match. Clear the search to see every leg.</p>:<Slip picks={searching?hits:picks} missing={shownMissing} board={board} terms={terms} {...actions}/>}
     <footer className="ticket-foot"><p>Tap a leg for details. Picks stay editable until they’re graded.</p><Button variant="outline" disabled={!picks.length} onClick={onCopy}>Copy picks</Button></footer>
   </article>;
 }
