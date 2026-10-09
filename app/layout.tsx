@@ -1,13 +1,12 @@
 import type { Metadata, Viewport } from 'next';
-import { Archivo } from 'next/font/google';
+import { Archivo, Big_Shoulders, Big_Shoulders_Stencil } from 'next/font/google';
 import './globals.css';
 
-// Archivo's width axis drives the condensed display type.
-const archivo = Archivo({
-  variable: '--font-archivo',
-  subsets: ['latin'],
-  axes: ['wdth'],
-});
+// Archivo for reading; Big Shoulders for headings and figures; its stencil cut
+// only for the week number painted on the turf.
+const archivo = Archivo({ variable: '--font-archivo', subsets: ['latin'] });
+const display = Big_Shoulders({ variable: '--font-display', subsets: ['latin'], axes: ['opsz'] });
+const stencil = Big_Shoulders_Stencil({ variable: '--font-stencil', subsets: ['latin'], weight: '900' });
 
 export const metadata: Metadata = {
   title: 'OFF League Megalay Portal',
@@ -15,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#07152f',
+  themeColor: '#0e4d35',
 };
 
 export default function RootLayout({
@@ -25,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${archivo.variable} antialiased`}>{children}</body>
+      <body className={`${archivo.variable} ${display.variable} ${stencil.variable} antialiased`}>{children}</body>
     </html>
   );
 }

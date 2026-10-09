@@ -48,8 +48,8 @@ export function OddsBrowser({initialSport,onPick}:{initialSport?:string;onPick:(
   const sport=SPORTS.find(s=>s.key===key)!,board=boards[key];
   const pick=(e:OddsEvent,c:NonNullable<Cell>)=>onPick({sport:sport.sport,odds:c.odds,details:{...c.fill,eventDate:eventDate(e.commence),feedAt:board?.fetchedAt||undefined}});
   return <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200" aria-label="FanDuel lines">
-    <div className="bg-[#07152f] px-4 py-3 text-white"><p className="font-bold">Find it on FanDuel</p><p className="text-xs text-white/75">Tap a line to fill in your pick</p></div>
-    <div className="flex gap-2 overflow-x-auto border-b bg-[#f8fbff] px-3 py-3">{SPORTS.map(s=><button key={s.key} type="button" aria-pressed={s.key===key} onClick={()=>setKey(s.key)} className={`min-h-9 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-sm font-bold ${s.key===key?'border-[#07152f] bg-[#07152f] text-[#c9ff37]':'border-slate-300 bg-white text-slate-900'}`}>{s.label}</button>)}</div>
+    <div className="bg-[var(--turf)] px-4 py-3 text-[var(--chalk)]"><p className="font-bold">Find it on FanDuel</p><p className="text-xs text-white/75">Tap a line to fill in your pick</p></div>
+    <div className="flex gap-2 overflow-x-auto border-b bg-[var(--paper-2)] px-3 py-3">{SPORTS.map(s=><button key={s.key} type="button" aria-pressed={s.key===key} onClick={()=>setKey(s.key)} className={`min-h-9 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-sm font-bold ${s.key===key?'border-[var(--turf)] bg-[var(--turf)] text-[var(--flag)]':'border-slate-300 bg-white text-slate-900'}`}>{s.label}</button>)}</div>
     {board?.paused&&<p className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">{board.fetchedAt?<>Showing lines from <strong>{clock(board.fetchedAt)}</strong>. </>:''}Updates are paused to stay within this month’s free odds quota. Check the price in the FanDuel app.</p>}
     {board?.stale&&!board.paused&&<p className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">Showing older lines from <strong>{clock(board.fetchedAt!)}</strong>. Check the price in the FanDuel app.</p>}
     <div aria-live="polite">
@@ -62,10 +62,10 @@ export function OddsBrowser({initialSport,onPick}:{initialSport?:string;onPick:(
         <div className="grid grid-cols-[minmax(0,1fr)_4rem_4rem_4rem] items-end gap-1.5 text-xs font-semibold text-slate-500"><span/><span className="text-center">Spread</span><span className="text-center">Total</span><span className="text-center">Money</span></div>
         {rows(e).map((r,i)=><div key={r.team+i} className="grid grid-cols-[minmax(0,1fr)_4rem_4rem_4rem] items-center gap-1.5">
           <span className="text-sm font-bold leading-tight break-words">{i===1?'@ ':''}{r.team}</span>
-          {r.cells.map((c,j)=>c?<button key={j} type="button" aria-label={`${c.label} at ${formatOdds(c.odds)}`} onClick={()=>pick(e,c)} className="flex min-h-12 flex-col items-center justify-center rounded-lg border border-slate-300 bg-white px-0.5 hover:border-[#07152f] focus-visible:outline-2 focus-visible:outline-[#1d4ed8]"><span className="text-xs font-semibold text-slate-600">{c.line}</span><span className="text-sm font-extrabold text-[#1d4ed8]">{formatOdds(c.odds)}</span></button>:<span key={j} className="text-center text-sm text-slate-400" aria-hidden="true">—</span>)}
+          {r.cells.map((c,j)=>c?<button key={j} type="button" aria-label={`${c.label} at ${formatOdds(c.odds)}`} onClick={()=>pick(e,c)} className="flex min-h-12 flex-col items-center justify-center rounded-lg border border-slate-300 bg-white px-0.5 hover:border-[var(--turf)] focus-visible:outline-2 focus-visible:outline-[var(--turf)]"><span className="text-xs font-semibold text-slate-600">{c.line}</span><span className="text-sm font-extrabold text-[var(--turf)]">{formatOdds(c.odds)}</span></button>:<span key={j} className="text-center text-sm text-slate-400" aria-hidden="true">—</span>)}
         </div>)}
       </div>)}
     </div>
-    <p className="bg-[#f8fbff] px-4 py-2.5 text-xs leading-relaxed text-slate-600">{board?.fetchedAt?`Updated ${clock(board.fetchedAt)} · `:''}Refreshes about every 4 hours. Player props aren’t listed: enter those manually. Always confirm the price in the FanDuel app.</p>
+    <p className="bg-[var(--paper-2)] px-4 py-2.5 text-xs leading-relaxed text-slate-600">{board?.fetchedAt?`Updated ${clock(board.fetchedAt)} · `:''}Refreshes about every 4 hours. Player props aren’t listed: enter those manually. Always confirm the price in the FanDuel app.</p>
   </section>;
 }
