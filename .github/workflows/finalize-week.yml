@@ -1,0 +1,28 @@
+name: Finalize the week
+
+# Every Tuesday morning: settle any finished games, finalize the active week
+# (pending legs stay pending for the commissioner) and open the next one.
+# GitHub schedules are UTC; this is 6:30 AM Eastern daylight time (5:30 AM in
+# standard time).
+on:
+  schedule:
+    - cron: '30 10 * * 2'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Finalize and open the next week
+        env:
+          PORTAL_URL: ${{ vars.PORTAL_URL || 'https://off-league-megalay.abhinavsehgal55.workers.dev' }}
+          TOKEN: ${{ secrets.PORTAL_RESULTS_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "PORTAL_RESULTS_TOKEN is not set for this repository; nothing to do."
+            exit 0
+          fi
+          curl --fail-with-body -sS --max-time 90 -X POST "$PORTAL_URL/api/finalize" -H "Authorization: Bearer $TOKEN"
