@@ -6,5 +6,6 @@ declare namespace Cloudflare {
     PORTAL_ADMIN_EMAIL?: string;
     PORTAL_COMMISSIONER_CODE?: string;
     PORTAL_COMMISSIONER_SESSION?: string;
+    ODDS_API_KEY?: string;
   }
 }

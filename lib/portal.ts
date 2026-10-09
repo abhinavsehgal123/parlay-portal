@@ -1,8 +1,19 @@
 export const members = ['CJ', 'Brooks', 'Nav', 'Fab', 'Drew', 'Shan', 'Kith', 'Griff', 'Seed', 'Rohan', 'Ryser', 'Jp'];
 export const sports = ['NFL', 'College Football', 'NBA', 'College Basketball', 'MLB', 'NHL', 'Soccer', 'Other'];
+// Sports offered in the FanDuel odds browser, keyed by The Odds API sport key.
+export const oddsSports = [
+  { key: 'americanfootball_nfl', label: 'NFL', sport: 'NFL' },
+  { key: 'americanfootball_ncaaf', label: 'College Football', sport: 'College Football' },
+  { key: 'basketball_nba', label: 'NBA', sport: 'NBA' },
+  { key: 'basketball_ncaab', label: 'College Basketball', sport: 'College Basketball' },
+  { key: 'baseball_mlb', label: 'MLB', sport: 'MLB' },
+  { key: 'icehockey_nhl', label: 'NHL', sport: 'NHL' },
+  { key: 'soccer_epl', label: 'Premier League', sport: 'Soccer' },
+  { key: 'soccer_uefa_champs_league', label: 'Champions League', sport: 'Soccer' },
+] as const;
 export const markets = ['Moneyline', 'Spread', 'Game total', 'Player prop', 'Other'];
 export type Status = 'Pending' | 'Hit' | 'Miss' | 'Push' | 'Void';
-export type Details = { team?: string; opponent?: string; market?: string; line?: string; eventDate?: string; description?: string };
+export type Details = { team?: string; opponent?: string; market?: string; line?: string; eventDate?: string; description?: string; feedAt?: string };
 export type Evidence = { result?: string; source?: string; reason?: string; gradedAt?: string };
 export type Pick = { id: string; season: string; week: number; member: string; sport: string; selection: string; odds: number; status: Status; createdAt: string; updatedAt: string; revision: number; details: Details; evidence: Evidence };
 export type Settings = { season: string; activeWeek: number; submissionsOpen: boolean; deadlineLabel: string };
