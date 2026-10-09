@@ -1,0 +1,65 @@
+name: Deploy to Cloudflare
+
+# Every merge to main is tested, built and deployed to the Cloudflare Worker,
+# after applying any new database migrations. Nothing runs until the
+# repository variable CLOUDFLARE_DEPLOY is set to true.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: vars.CLOUDFLARE_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: off-league-megalay
+      D1_NAME: off-league-megalay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test
+        run: |
+          node --test tests/*.test.mjs
+          node node_modules/typescript/bin/tsc --noEmit
+      - run: npm run build
+      - name: Find or create the D1 database
+        run: |
+          find_id() { npx wrangler d1 list --json | node -e 'const l=JSON.parse(require("fs").readFileSync(0,"utf8"));const d=l.find(x=>x.name===process.env.D1_NAME);process.stdout.write(d?d.uuid:"")'; }
+          id=$(find_id)
+          if [ -z "$id" ]; then npx wrangler d1 create "$D1_NAME"; id=$(find_id); fi
+          test -n "$id"
+          echo "CLOUDFLARE_D1_DATABASE_ID=$id" >> "$GITHUB_ENV"
+      - run: node scripts/cloudflare-config.mjs
+      - name: Apply database migrations
+        run: npx wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json
+      - name: Deploy
+        run: npx wrangler deploy --config dist/server/wrangler.json
+      - name: Sync Worker secrets
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          PORTAL_RESULTS_TOKEN: ${{ secrets.PORTAL_RESULTS_TOKEN }}
+          PORTAL_COMMISSIONER_CODE: ${{ secrets.PORTAL_COMMISSIONER_CODE }}
+          PORTAL_COMMISSIONER_SESSION: ${{ secrets.PORTAL_COMMISSIONER_SESSION }}
+          PORTAL_SHEET_WEBHOOK_URL: ${{ secrets.PORTAL_SHEET_WEBHOOK_URL }}
+          PORTAL_SHEET_SECRET: ${{ secrets.PORTAL_SHEET_SECRET }}
+          PORTAL_ADMIN_EMAIL: ${{ secrets.PORTAL_ADMIN_EMAIL }}
+        run: |
+          file="$RUNNER_TEMP/worker-secrets.json"
+          node scripts/worker-secrets.mjs "$file"
+          npx wrangler secret bulk "$file" --config dist/server/wrangler.json
+          rm -f "$file"

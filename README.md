@@ -47,3 +47,5 @@ Codex and Claude Code can work from the same cloned repository. Keep each change
 ## Deployment
 
 The live app is hosted on ChatGPT Sites. GitHub is the collaboration repository; merging a pull request does not automatically publish to the live site. Abhinav must bring reviewed changes into the existing Sites project and publish through Sites. Preserve the existing project identity in `.openai/hosting.json`; do not create a replacement production project.
+
+A move to Cloudflare (Workers + D1) with automatic deploys on merge is prepared but not yet active; see `docs/moving-to-cloudflare.md`.
