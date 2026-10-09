@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "3dd880e4-e4c1-4e2c-8ad0-3e417999ba80",
+  "id": "0ea654e4-b7fb-44ab-bf0f-9dd75ab01f6f",
   "prevId": "96a96704-63f5-4043-ab6b-7c27acdd97cf",
   "tables": {
     "missed_submissions": {
@@ -110,8 +110,8 @@
     "odds_usage": {
       "name": "odds_usage",
       "columns": {
-        "day": {
-          "name": "day",
+        "week_start": {
+          "name": "week_start",
           "type": "text",
           "primaryKey": true,
           "notNull": true,

@@ -6,7 +6,7 @@ CREATE TABLE `odds_cache` (
 );
 --> statement-breakpoint
 CREATE TABLE `odds_usage` (
-	`day` text PRIMARY KEY NOT NULL,
+	`week_start` text PRIMARY KEY NOT NULL,
 	`credits` integer DEFAULT 0 NOT NULL,
 	`remaining` integer
 );

@@ -91,7 +91,7 @@ export const oddsCache = sqliteTable('odds_cache', {
 });
 
 export const oddsUsage = sqliteTable('odds_usage', {
-  day: text('day').primaryKey(),
+  weekStart: text('week_start').primaryKey(),
   credits: integer('credits').notNull().default(0),
   remaining: integer('remaining'),
 });

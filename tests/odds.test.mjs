@@ -38,22 +38,28 @@ test('keeps only valid FanDuel lines inside the next 7 days',()=>{
   assert.deepEqual([...events[0].totals.map(o=>o.name)],['Over','Under']);
   assert.equal(events[0].spreads.find(o=>o.name==='Las Vegas Raiders').point,2.5);assert.equal(events[0].spreads.filter(o=>o.name==='Las Vegas Raiders').length,1);
 });
-test('lines are cached per sport for two hours, then refreshed',async()=>{
+test('lines are cached per sport for four hours, then refreshed',async()=>{
   const f=fixture();
   const first=await f.odds.getOdds('americanfootball_nfl',NOW);
   assert.equal(first.events.length,1);assert.equal(first.paused,false);assert.equal(f.urls.length,1);
   assert.match(f.urls[0],/bookmakers=fanduel/);assert.match(f.urls[0],/markets=h2h%2Cspreads%2Ctotals/);
-  await f.odds.getOdds('americanfootball_nfl',NOW+HOUR);assert.equal(f.urls.length,1);
-  await f.odds.getOdds('americanfootball_nfl',NOW+3*HOUR);assert.equal(f.urls.length,2);
+  await f.odds.getOdds('americanfootball_nfl',NOW+3*HOUR);assert.equal(f.urls.length,1);
+  await f.odds.getOdds('americanfootball_nfl',NOW+5*HOUR);assert.equal(f.urls.length,2);
   assert.equal(f.sql.prepare('SELECT credits FROM odds_usage').get().credits,6);
 });
-test('daily credit budget pauses refreshes and serves the last lines',async()=>{
-  const f=fixture();
-  for(let i=0;i<5;i++)await f.odds.getOdds('americanfootball_nfl',NOW+i*(2*HOUR+1000));
-  assert.equal(f.urls.length,5);
-  const paused=await f.odds.getOdds('americanfootball_nfl',NOW+5*(2*HOUR+1000));
-  assert.equal(f.urls.length,5);assert.equal(paused.paused,true);assert.ok(paused.fetchedAt);
-  assert.ok(f.sql.prepare('SELECT credits FROM odds_usage').get().credits<=15);
+test('weekly credit budget pauses refreshes, serves the last lines, and resets on Monday',async()=>{
+  const f=fixture({remaining:5000}),sports=[...f.odds.oddsSports].map(x=>x.key),step=f.odds.ODDS_TTL_MS+1000;
+  let last;
+  for(let i=0;i<40;i++)last=await f.odds.getOdds(sports[i%sports.length],NOW+Math.floor(i/sports.length)*step);
+  assert.equal(f.urls.length,Math.floor(f.odds.ODDS_WEEKLY_CREDITS/3));
+  assert.equal(last.paused,true);assert.ok(last.fetchedAt);
+  assert.ok(f.sql.prepare('SELECT credits FROM odds_usage').get().credits<=f.odds.ODDS_WEEKLY_CREDITS);
+  // Thursday 2026-10-08 belongs to the week starting Monday 2026-10-05; the next Monday starts a new budget.
+  assert.equal(f.odds.easternWeekStart(NOW),'2026-10-05');
+  const monday=Date.parse('2026-10-12T14:00:00Z');assert.equal(f.odds.easternWeekStart(monday),'2026-10-12');
+  assert.equal(f.odds.easternWeekStart(Date.parse('2026-10-12T03:00:00Z')),'2026-10-05');
+  const fresh=await f.odds.getOdds('americanfootball_nfl',monday);
+  assert.equal(fresh.paused,false);assert.equal(f.urls.length,Math.floor(f.odds.ODDS_WEEKLY_CREDITS/3)+1);
 });
 test('reserve floor stops refreshes when the account is nearly out of credits',async()=>{
   const f=fixture({remaining:20});

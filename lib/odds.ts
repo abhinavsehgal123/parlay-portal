@@ -6,11 +6,13 @@ export { oddsSports };
 // FanDuel game lines via The Odds API, sized for its free plan (500 credits a
 // month). Each refresh of one sport costs 3 credits (h2h, spreads, totals).
 // Lines are cached per sport, refreshed only when someone browses that sport,
-// and refreshes stop at a daily budget or a reserve floor. Manual pick entry
-// never depends on this module.
-export const ODDS_TTL_MS = 2 * 60 * 60 * 1000;
+// and refreshes stop at a weekly budget or a reserve floor. The budget is
+// weekly because the league browses mostly in the days before each Thursday
+// target; 100 credits a week stays under 500 a month. Manual pick entry never
+// depends on this module.
+export const ODDS_TTL_MS = 4 * 60 * 60 * 1000;
 export const ODDS_RETRY_MS = 10 * 60 * 1000;
-export const ODDS_DAILY_CREDITS = 15;
+export const ODDS_WEEKLY_CREDITS = 100;
 export const ODDS_RESERVE_CREDITS = 25;
 export const ODDS_WINDOW_DAYS = 7;
 const MARKETS = ['h2h', 'spreads', 'totals'];
@@ -44,7 +46,13 @@ export function normalize(raw: unknown, now: number): OddsEvent[] {
   return events.sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
 }
 
-const easternDay = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+// The Monday (Eastern) that starts the budget week containing `ms`, as YYYY-MM-DD.
+export function easternWeekStart(ms: number) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short' }).formatToParts(ms);
+  const get = (type: string) => parts.find(p => p.type === type)!.value;
+  const sinceMonday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(get('weekday'));
+  return new Date(Date.UTC(Number(get('year')), Number(get('month')) - 1, Number(get('day')) - sinceMonday)).toISOString().slice(0, 10);
+}
 
 export async function getOdds(sportKey: string, now = Date.now()): Promise<OddsBoard | null> {
   const sport = oddsSports.find(s => s.key === sportKey);
@@ -67,13 +75,13 @@ export async function getOdds(sportKey: string, now = Date.now()): Promise<OddsB
   if (!lease.meta.changes) return board(cached, false, !cached?.fetchedAt);
 
   // Reserve the credits before spending them so concurrent requests cannot overrun the budget.
-  const day = easternDay(now);
-  const reserve = await db().prepare(`INSERT INTO odds_usage (day, credits, remaining) VALUES (?, ?, NULL)
-    ON CONFLICT(day) DO UPDATE SET credits = odds_usage.credits + ? WHERE odds_usage.credits + ? <= ?`)
-    .bind(day, COST, COST, COST, ODDS_DAILY_CREDITS).run();
-  const floor = await db().prepare('SELECT remaining FROM odds_usage WHERE remaining IS NOT NULL ORDER BY day DESC LIMIT 1').first<{ remaining: number }>();
+  const week = easternWeekStart(now);
+  const reserve = await db().prepare(`INSERT INTO odds_usage (week_start, credits, remaining) VALUES (?, ?, NULL)
+    ON CONFLICT(week_start) DO UPDATE SET credits = odds_usage.credits + ? WHERE odds_usage.credits + ? <= ?`)
+    .bind(week, COST, COST, COST, ODDS_WEEKLY_CREDITS).run();
+  const floor = await db().prepare('SELECT remaining FROM odds_usage WHERE remaining IS NOT NULL ORDER BY week_start DESC LIMIT 1').first<{ remaining: number }>();
   if (!reserve.meta.changes || (floor && floor.remaining - COST < ODDS_RESERVE_CREDITS)) {
-    if (reserve.meta.changes) await db().prepare('UPDATE odds_usage SET credits = credits - ? WHERE day = ?').bind(COST, day).run();
+    if (reserve.meta.changes) await db().prepare('UPDATE odds_usage SET credits = credits - ? WHERE week_start = ?').bind(COST, week).run();
     return board(cached, true, false);
   }
 
@@ -83,7 +91,7 @@ export async function getOdds(sportKey: string, now = Date.now()): Promise<OddsB
     url.search = new URLSearchParams({ apiKey: env.ODDS_API_KEY, bookmakers: 'fanduel', markets: MARKETS.join(','), oddsFormat: 'american', dateFormat: 'iso', commenceTimeFrom: iso(now), commenceTimeTo: iso(now + ODDS_WINDOW_DAYS * 86400000) }).toString();
     const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const remaining = Number(response.headers.get('x-requests-remaining'));
-    if (Number.isFinite(remaining) && response.headers.has('x-requests-remaining')) await db().prepare('UPDATE odds_usage SET remaining = ? WHERE day = ?').bind(Math.floor(remaining), day).run();
+    if (Number.isFinite(remaining) && response.headers.has('x-requests-remaining')) await db().prepare('UPDATE odds_usage SET remaining = ? WHERE week_start = ?').bind(Math.floor(remaining), week).run();
     if (!response.ok) throw new Error(`Odds provider HTTP ${response.status}`);
     const events = normalize(await response.json(), now);
     await db().prepare('UPDATE odds_cache SET payload = ?, fetched_at = ? WHERE sport_key = ?').bind(JSON.stringify(events), now, sport.key).run();

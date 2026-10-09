@@ -66,6 +66,6 @@ export function OddsBrowser({initialSport,onPick}:{initialSport?:string;onPick:(
         </div>)}
       </div>)}
     </div>
-    <p className="bg-[#f8fbff] px-4 py-2.5 text-xs leading-relaxed text-slate-600">{board?.fetchedAt?`Updated ${clock(board.fetchedAt)} · `:''}Refreshes about every 2 hours. Player props aren’t listed: enter those manually. Always confirm the price in the FanDuel app.</p>
+    <p className="bg-[#f8fbff] px-4 py-2.5 text-xs leading-relaxed text-slate-600">{board?.fetchedAt?`Updated ${clock(board.fetchedAt)} · `:''}Refreshes about every 4 hours. Player props aren’t listed: enter those manually. Always confirm the price in the FanDuel app.</p>
   </section>;
 }
