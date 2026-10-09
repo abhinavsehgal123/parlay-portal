@@ -26,6 +26,19 @@ jobs:
       WORKER_NAME: off-league-megalay
       D1_NAME: off-league-megalay
     steps:
+      - name: Check required secrets
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          PORTAL_RESULTS_TOKEN: ${{ secrets.PORTAL_RESULTS_TOKEN }}
+          PORTAL_COMMISSIONER_CODE: ${{ secrets.PORTAL_COMMISSIONER_CODE }}
+          PORTAL_COMMISSIONER_SESSION: ${{ secrets.PORTAL_COMMISSIONER_SESSION }}
+        run: |
+          missing=""
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do [ -n "${!name}" ] || missing="$missing $name"; done
+          if [ -n "$missing" ]; then echo "::error::Add these repository secrets before deploying:$missing"; exit 1; fi
+          for name in ODDS_API_KEY PORTAL_RESULTS_TOKEN PORTAL_COMMISSIONER_CODE PORTAL_COMMISSIONER_SESSION; do
+            [ -n "${!name}" ] || echo "::warning::$name is not set; the related feature won't work until it is."
+          done
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
