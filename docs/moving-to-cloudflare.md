@@ -27,7 +27,7 @@ Nothing here touches the current Sites deployment until the cutover. Rehearsed o
    - The log ends with the `workers.dev` URL.
    - That site is empty until the cutover. Don't share it yet.
 
-## 2. Cutover (about 30 minutes, Monday to Wednesday)
+## 2. Cutover (done 2026-10-08, about 10:30 PM ET)
 
 1. **Freeze the old site.** As commissioner on the old site:
    - In Admin, check the Google Sheet queue is empty (or press retry until it is).
@@ -38,7 +38,7 @@ Nothing here touches the current Sites deployment until the cutover. Rehearsed o
    - copies every record from the old board;
    - fails unless the new portal matches the old one field by field.
 3. **Check and reopen.** Open the new site, sign in as commissioner, check this week, history and standings, then reopen submissions there.
-4. **Point the score checks at the new site.** Set the repository variable `PORTAL_URL` to the new URL. Then run **Check final scores** once; its log should show `"ran":true`.
+4. **Score checks.** `check-scores.yml` now defaults to the new URL (`https://off-league-megalay.abhinavsehgal55.workers.dev`). Set the repository *variable* (not secret) `PORTAL_URL` only to override it. Run **Check final scores** once; its log should show `"ran":true`.
 5. **Share the new link** with the league. When Codex is available, ask it to replace the old Sites deployment with a page that links to the new address, rather than leave a stale copy up.
 
 ## What isn't copied

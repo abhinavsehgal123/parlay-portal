@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Settle finished games
         env:
-          PORTAL_URL: ${{ vars.PORTAL_URL || 'https://off-league-parlay-portal.abhinavsehgal55.chatgpt.site' }}
+          PORTAL_URL: ${{ vars.PORTAL_URL || 'https://off-league-megalay.abhinavsehgal55.workers.dev' }}
           TOKEN: ${{ secrets.PORTAL_RESULTS_TOKEN }}
         run: |
           if [ -z "$TOKEN" ]; then
