@@ -1,0 +1,30 @@
+name: Check final scores
+
+# Asks the portal to settle finished games from final scores. GitHub schedules
+# are UTC; these are set for Eastern daylight time, so during standard time
+# each run lands an hour earlier.
+on:
+  schedule:
+    - cron: '30 3 * * 5,6'          # Thursday and Friday, 11:30 PM ET
+    - cron: '0 17,19,21,23 * * 6,0' # Saturday and Sunday, 1, 3, 5 and 7 PM ET
+    - cron: '0 1,3,5 * * 0,1'       # Saturday and Sunday, 9 and 11 PM and 1 AM ET
+    - cron: '30 5 * * 2'            # Monday night games, 1:30 AM ET Tuesday
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Settle finished games
+        env:
+          PORTAL_URL: ${{ vars.PORTAL_URL || 'https://off-league-parlay-portal.abhinavsehgal55.chatgpt.site' }}
+          TOKEN: ${{ secrets.PORTAL_RESULTS_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "PORTAL_RESULTS_TOKEN is not set for this repository; nothing to do."
+            exit 0
+          fi
+          curl --fail-with-body -sS --max-time 60 -X POST "$PORTAL_URL/api/results" -H "Authorization: Bearer $TOKEN"

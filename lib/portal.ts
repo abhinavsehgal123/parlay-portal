@@ -19,7 +19,7 @@ export type Pick = { id: string; season: string; week: number; member: string; s
 export type Settings = { season: string; activeWeek: number; submissionsOpen: boolean; deadlineLabel: string };
 export type Change = { id: string; submissionId: string; season: string; week: number; member: string; actor: string; action: string; before: Partial<Pick>; after: Partial<Pick>; reason: string; createdAt: string };
 export type Ticket = { season: string; week: number; combinedOdds: number; wager: number; potentialPayout: number };
-export type Board = { settings: Settings; isAdmin: boolean; submissions: Pick[]; historySubmissions: Pick[]; changes: Change[]; finalizations: {season:string;week:number;finalizedAt:string}[]; tickets: Ticket[]; missedSubmissions: {season:string;week:number;member:string;reason:string}[]; sync?: { configured:boolean; pending:number; failed:number; items:{id:string;attempts:number;error:string;member:string}[] } };
+export type Board = { settings: Settings; isAdmin: boolean; submissions: Pick[]; historySubmissions: Pick[]; changes: Change[]; finalizations: {season:string;week:number;finalizedAt:string}[]; tickets: Ticket[]; missedSubmissions: {season:string;week:number;member:string;reason:string}[]; sync?: { configured:boolean; pending:number; failed:number; items:{id:string;attempts:number;error:string;member:string}[] }; results?: { startedAt:number; finishedAt:number; graded:number; note:string; weekCredits:number } | null };
 export const formatOdds = (n: number) => `${n > 0 ? '+' : ''}${n}`;
 export const statusLabel = (s: Status) => ({Pending:'Awaiting result',Hit:'Win',Miss:'Loss',Push:'Push',Void:'Void'}[s]);
 export function selectionText(d: Details) {

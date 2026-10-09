@@ -95,3 +95,13 @@ export const oddsUsage = sqliteTable('odds_usage', {
   credits: integer('credits').notNull().default(0),
   remaining: integer('remaining'),
 });
+
+export const resultsRuns = sqliteTable('results_runs', {
+  id: text('id').primaryKey(),
+  weekStart: text('week_start').notNull(),
+  startedAt: integer('started_at').notNull(),
+  finishedAt: integer('finished_at').notNull().default(0),
+  credits: integer('credits').notNull().default(0),
+  graded: integer('graded').notNull().default(0),
+  note: text('note').notNull().default(''),
+});

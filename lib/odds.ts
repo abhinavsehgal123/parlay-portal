@@ -8,11 +8,12 @@ export { oddsSports };
 // Lines are cached per sport, refreshed only when someone browses that sport,
 // and refreshes stop at a weekly budget or a reserve floor. The budget is
 // weekly because the league browses mostly in the days before each Thursday
-// target; 100 credits a week stays under 500 a month. Manual pick entry never
-// depends on this module.
+// target. With automatic results (lib/results.ts, 60 a week) the two stay
+// under the free plan's 500 a month. Manual pick entry never depends on this
+// module.
 export const ODDS_TTL_MS = 4 * 60 * 60 * 1000;
 export const ODDS_RETRY_MS = 10 * 60 * 1000;
-export const ODDS_WEEKLY_CREDITS = 100;
+export const ODDS_WEEKLY_CREDITS = 50;
 export const ODDS_RESERVE_CREDITS = 25;
 export const ODDS_WINDOW_DAYS = 7;
 const MARKETS = ['h2h', 'spreads', 'totals'];

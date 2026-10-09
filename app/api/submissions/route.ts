@@ -30,19 +30,20 @@ export async function GET(request:Request) {
   try {
     const s=await settings(); if(!s)return fail('League settings are unavailable. Please retry.',503);
     const admin=isAdmin(request);
-    const [p,c,f,t,m,q]=await Promise.all([
+    const [p,c,f,t,m,q,r]=await Promise.all([
       db().prepare(`SELECT ${pickColumns} FROM submissions ORDER BY season DESC,week DESC,created_at`).all(),
       db().prepare('SELECT id,submission_id AS submissionId,season,week,member,actor,action,before_json,after_json,reason,created_at AS createdAt FROM pick_changes ORDER BY created_at DESC').all(),
       db().prepare('SELECT season,week,pick_count AS pickCount,finalized_at AS finalizedAt FROM weekly_cycles ORDER BY season DESC,week DESC').all(),
       db().prepare('SELECT season,week,combined_odds AS combinedOdds,wager,potential_payout AS potentialPayout FROM weekly_tickets').all(),
       db().prepare('SELECT season,week,member,reason FROM missed_submissions').all(),
       admin?db().prepare('SELECT id,attempts,error,payload FROM sheet_outbox ORDER BY created_at').all():Promise.resolve({results:[]}),
+      admin?db().prepare('SELECT started_at AS startedAt,finished_at AS finishedAt,graded,note,(SELECT COALESCE(SUM(credits),0) FROM results_runs r WHERE r.week_start=results_runs.week_start) AS weekCredits FROM results_runs ORDER BY started_at DESC LIMIT 1').first():Promise.resolve(null),
     ]);
     const history=p.results.map(decode);
     kickSync();
     return Response.json({settings:{...s,submissionsOpen:Boolean(s.submissionsOpen)},isAdmin:admin,submissions:history.filter(x=>x.season===s.season&&x.week===s.activeWeek),historySubmissions:history,
       changes:c.results.map(x=>({...x,before:JSON.parse(String(x.before_json)),after:JSON.parse(String(x.after_json)),before_json:undefined,after_json:undefined})),finalizations:f.results,tickets:t.results,missedSubmissions:m.results,
-      ...(admin?{sync:{configured:Boolean(env.PORTAL_SHEET_WEBHOOK_URL&&env.PORTAL_SHEET_SECRET),pending:q.results.length,failed:q.results.filter(x=>Number(x.attempts)>0).length,items:q.results.map(x=>({id:x.id,attempts:x.attempts,error:x.error,member:JSON.parse(String(x.payload)).member||'Removed pick'}))}}:{})},{headers:{'Cache-Control':'no-store'}});
+      ...(admin?{results:r,sync:{configured:Boolean(env.PORTAL_SHEET_WEBHOOK_URL&&env.PORTAL_SHEET_SECRET),pending:q.results.length,failed:q.results.filter(x=>Number(x.attempts)>0).length,items:q.results.map(x=>({id:x.id,attempts:x.attempts,error:x.error,member:JSON.parse(String(x.payload)).member||'Removed pick'}))}}:{})},{headers:{'Cache-Control':'no-store'}});
   }catch{console.error('portal_read_failed');return fail('The board could not load. Please retry; saved picks are unchanged.',503);}
 }
 export async function POST(request:Request) {
