@@ -1,6 +1,6 @@
 'use client';
 import { Fragment,useState } from 'react';
-import { ChevronDown,Pencil,Search,X } from 'lucide-react';
+import { ChevronDown,Pencil,Repeat,Search,X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatOdds,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
 
@@ -37,6 +37,10 @@ export type LegActions={onEdit:(p:Pick)=>void;onGrade:(p:Pick)=>void;onRemove:(p
 function Leg({pick,board,archived,open,terms,onToggle,onEdit,onGrade,onRemove}:LegActions&{pick:Pick;board:Board;archived:boolean;open:boolean;terms:string[];onToggle:()=>void}) {
   const changes=board.changes.filter(c=>c.submissionId===pick.id);
   const d=pick.details,panel=`leg-${pick.id}`;
+  // The lost pick this one replaced, if any (changes are newest first).
+  const replaced=changes.find(c=>c.action==='replace')?.before;
+  // This week's lost picks can be swapped for a new bet.
+  const replaceable=!archived&&pick.status==='Miss';
   return <li className={`leg leg-${pick.status.toLowerCase()}`}>
     <button type="button" className="leg-summary" aria-expanded={open} aria-controls={panel} onClick={onToggle}>
       <span className="leg-member"><Highlight text={pick.member} terms={terms}/></span>
@@ -48,6 +52,7 @@ function Leg({pick,board,archived,open,terms,onToggle,onEdit,onGrade,onRemove}:L
     </button>
     {open&&<div id={panel} className="leg-detail">
       <dl className="leg-facts">
+        {replaced?.selection&&<><dt>Replaced</dt><dd>{replaced.selection}{typeof replaced.odds==='number'?` (${formatOdds(replaced.odds)})`:''}, lost</dd></>}
         {d.opponent&&<><dt>Matchup</dt><dd>{d.team} vs {d.opponent}</dd></>}
         {d.line&&<><dt>Line</dt><dd>{d.line}</dd></>}
         {d.description&&<><dt>Market</dt><dd>{d.description}</dd></>}
@@ -59,7 +64,7 @@ function Leg({pick,board,archived,open,terms,onToggle,onEdit,onGrade,onRemove}:L
       </dl>
       {pick.evidence.source&&/^https?:\/\//i.test(pick.evidence.source)&&<a className="mt-2 inline-block text-sm font-semibold underline" href={pick.evidence.source} target="_blank" rel="noreferrer">Result source</a>}
       <p className="leg-note">Submitted {time(pick.createdAt)}{pick.revision>0?`, updated ${time(pick.updatedAt)}`:''}{d.feedAt?`. Line filled from FanDuel feed, ${time(d.feedAt)}`:''}</p>
-      <div className="mt-3 flex flex-wrap gap-2">{(board.isAdmin||(!archived&&pick.status==='Pending'))&&<Button variant="outline" onClick={()=>onEdit(pick)}><Pencil className="size-4"/>{board.isAdmin?'Edit pick':'Edit my pick'}</Button>}{board.isAdmin&&<><Button variant="outline" onClick={()=>onGrade(pick)}>Record result</Button><Button variant="ghost" className="text-[var(--loss)]" onClick={()=>onRemove(pick)}>Remove</Button></>}</div>
+      <div className="mt-3 flex flex-wrap gap-2">{(board.isAdmin||replaceable||(!archived&&pick.status==='Pending'))&&<Button variant="outline" onClick={()=>onEdit(pick)}>{replaceable?<Repeat className="size-4"/>:<Pencil className="size-4"/>}{replaceable?(board.isAdmin?'Replace pick':'Replace my pick'):(board.isAdmin?'Edit pick':'Edit my pick')}</Button>}{board.isAdmin&&<><Button variant="outline" onClick={()=>onGrade(pick)}>Record result</Button><Button variant="ghost" className="text-[var(--loss)]" onClick={()=>onRemove(pick)}>Remove</Button></>}</div>
       {changes.length>0&&<details className="leg-history"><summary>Change history ({changes.length})</summary><ol>{changes.map(c=><li key={c.id}><p className="font-semibold">{c.action} by {c.actor}</p><p className="text-xs text-[var(--ink-2)]">{time(c.createdAt)}</p>{c.before.selection&&<p>Before: {snapshot(c.before)}</p>}{c.after.selection&&<p>After: {snapshot(c.after)}</p>}{c.reason&&<p>{c.reason}</p>}</li>)}</ol></details>}
     </div>}
   </li>;

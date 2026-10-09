@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { isAdmin } from '@/lib/admin';
 import { db, decode, pickColumns, safeWrite } from '@/lib/portal-db';
 import { kickSync, queueStatement } from '@/lib/sheet-sync';
-import { members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
+import { formatOdds, members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
 const fail=(error:string,status=400)=>Response.json({error},{status});
 const settings=()=>db().prepare('SELECT season,active_week AS activeWeek,submissions_open AS submissionsOpen,deadline_label AS deadlineLabel FROM portal_settings WHERE id=1').first<{season:string;activeWeek:number;submissionsOpen:number;deadlineLabel:string}>();
 function audit(id:string,before:Partial<Pick>,after:Partial<Pick>,actor:string,action:string,reason:string,conditional=false) {
@@ -77,8 +77,11 @@ async function mutate(request:Request,action:'edit'|'grade'|'remove') {
     const row=await db().prepare(`SELECT ${pickColumns} FROM submissions WHERE id=?`).bind(String(body.id||'')).first();if(!row)return fail('This pick no longer exists. Refresh the board.',404);
     const before=decode(row) as Pick;
     if(Number(body.revision)!==before.revision)return fail('This pick changed while you were editing. Close and reopen it to review the latest version.',409);
-    if(!admin){const s=await settings();if(body.member!==before.member||body.confirmOwnPick!==true)return fail('Confirm that you are changing your own pick.',403);if(s?.season!==before.season||s.activeWeek!==before.week||before.status!=='Pending')return fail('Only current, ungraded picks can be edited by members. Ask the commissioner for a correction.',403);}
-    const reason=String(body.reason||'').trim().slice(0,1000);if(admin&&!reason)return fail('Add a short reason or result note for the change history.');
+    if(!admin){const s=await settings();if(body.member!==before.member||body.confirmOwnPick!==true)return fail('Confirm that you are changing your own pick.',403);if(s?.season!==before.season||s.activeWeek!==before.week||!['Pending','Miss'].includes(before.status))return fail('Members can edit this week’s ungraded picks and replace ones that lost. Ask the commissioner for anything else.',403);}
+    // A lost pick in the active week can be replaced with a new bet: it's an edit of the same pick,
+    // recorded as a replacement so the lost original stays in the change history.
+    const replacing=action==='edit'&&before.status==='Miss';
+    const reason=String(body.reason||'').trim().slice(0,1000)||(replacing&&!admin?`Replaced ${before.selection} (${formatOdds(before.odds)}) after it lost.`:'');if(admin&&!reason)return fail('Add a short reason or result note for the change history.');
     const now=new Date().toISOString(),changeId=crypto.randomUUID();let after:Pick={...before,revision:before.revision+1,updatedAt:now};let statement:D1PreparedStatement;
     if(action==='edit'){
       const fields=validate(body,!before.details.market),key=`${before.season}|${before.week}|${fields.selection.toLowerCase().replace(/\s+/g,' ')}`;
@@ -86,7 +89,7 @@ async function mutate(request:Request,action:'edit'|'grade'|'remove') {
       after={...after,...fields,status:'Pending',evidence:{}};
       statement=db().prepare(`UPDATE submissions SET sport=?,selection=?,odds=?,details=?,duplicate_key=?,status='Pending',evidence='{}',revision=revision+1,updated_at=? WHERE id=? AND revision=?
         AND NOT EXISTS (SELECT 1 FROM submissions other WHERE other.duplicate_key=? AND other.id!=submissions.id)
-        ${admin?'':`AND status='Pending' AND EXISTS (SELECT 1 FROM portal_settings WHERE id=1 AND season=submissions.season AND active_week=submissions.week) AND NOT EXISTS (SELECT 1 FROM weekly_cycles WHERE season=submissions.season AND week=submissions.week)`}`)
+        ${admin?'':`AND status IN ('Pending','Miss') AND EXISTS (SELECT 1 FROM portal_settings WHERE id=1 AND season=submissions.season AND active_week=submissions.week) AND NOT EXISTS (SELECT 1 FROM weekly_cycles WHERE season=submissions.season AND week=submissions.week)`}`)
         .bind(fields.sport,fields.selection,fields.odds,JSON.stringify(fields.details),key,now,before.id,before.revision,key);
     }else if(action==='grade'){
       const status=String(body.status);if(!['Pending','Hit','Miss','Push','Void'].includes(status))return fail('Choose a valid result.');const source=String(body.source||'').trim();if(source&&!/^https?:\/\//i.test(source))return fail('Use a full http or https evidence link.');
@@ -94,7 +97,7 @@ async function mutate(request:Request,action:'edit'|'grade'|'remove') {
       statement=db().prepare('UPDATE submissions SET status=?,evidence=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?').bind(status,JSON.stringify(after.evidence),now,before.id,before.revision);
     }else statement=db().prepare('DELETE FROM submissions WHERE id=? AND revision=?').bind(before.id,before.revision);
     const payload=action==='remove'?{action:'deleteSubmission',id:before.id,member:before.member}:after;
-    const results=await db().batch([statement,audit(changeId,before,action==='remove'?{}:after,admin?'Commissioner':`${before.member} (honor system)`,action,reason,true),queueStatement(before.id,payload,changeId,changeId)]);
+    const results=await db().batch([statement,audit(changeId,before,action==='remove'?{}:after,admin?'Commissioner':`${before.member} (honor system)`,replacing?'replace':action,reason,true),queueStatement(before.id,payload,changeId,changeId)]);
     if(!results[0].meta.changes)return fail('Another change was saved first. Refresh and try again.',409);
     kickSync();return Response.json({ok:true,pick:action==='remove'?null:after});
   }catch(error){if(error instanceof Error&&/^(Enter|Choose|Include|Describe)/.test(error.message))return fail(error.message);console.error('portal_update_failed');return fail('The change could not be confirmed. Refresh before retrying.',503);}
