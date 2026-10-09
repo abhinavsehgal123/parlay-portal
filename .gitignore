@@ -40,3 +40,4 @@ next-env.d.ts
 # Worker secrets and local runtime state
 .dev.vars*
 .sites-runtime/
+*.tsbuildinfo
