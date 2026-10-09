@@ -2,11 +2,11 @@ name: Finalize the week
 
 # Every Tuesday morning: settle any finished games, finalize the active week
 # (pending legs stay pending for the commissioner) and open the next one.
-# GitHub schedules are UTC; this is 6:30 AM Eastern daylight time (5:30 AM in
-# standard time).
+# GitHub schedules are UTC; this is 6:17 AM Eastern daylight time (5:17 AM in
+# standard time), off the :00 and :30 marks when GitHub is busiest.
 on:
   schedule:
-    - cron: '30 10 * * 2'
+    - cron: '17 10 * * 2'
   workflow_dispatch:
 
 permissions: {}

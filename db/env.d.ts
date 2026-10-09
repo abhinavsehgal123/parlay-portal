@@ -8,5 +8,6 @@ declare namespace Cloudflare {
     PORTAL_COMMISSIONER_SESSION?: string;
     ODDS_API_KEY?: string;
     PORTAL_RESULTS_TOKEN?: string;
+    PORTAL_GRADER_TOKEN?: string;
   }
 }

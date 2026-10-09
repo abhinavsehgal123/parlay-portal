@@ -3,7 +3,7 @@
 // Usage: node scripts/worker-secrets.mjs <output file>
 import { writeFileSync } from 'node:fs';
 
-const names = ['ODDS_API_KEY', 'PORTAL_RESULTS_TOKEN', 'PORTAL_COMMISSIONER_CODE', 'PORTAL_COMMISSIONER_SESSION', 'PORTAL_SHEET_WEBHOOK_URL', 'PORTAL_SHEET_SECRET', 'PORTAL_ADMIN_EMAIL'];
+const names = ['ODDS_API_KEY', 'PORTAL_RESULTS_TOKEN', 'PORTAL_GRADER_TOKEN', 'PORTAL_COMMISSIONER_CODE', 'PORTAL_COMMISSIONER_SESSION', 'PORTAL_SHEET_WEBHOOK_URL', 'PORTAL_SHEET_SECRET', 'PORTAL_ADMIN_EMAIL'];
 const file = process.argv[2];
 if (!file) throw new Error('Pass the output file.');
 const secrets = Object.fromEntries(names.filter(n => process.env[n]).map(n => [n, process.env[n]]));

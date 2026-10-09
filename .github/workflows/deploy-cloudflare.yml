@@ -66,6 +66,7 @@ jobs:
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           PORTAL_RESULTS_TOKEN: ${{ secrets.PORTAL_RESULTS_TOKEN }}
+          PORTAL_GRADER_TOKEN: ${{ secrets.PORTAL_GRADER_TOKEN }}
           PORTAL_COMMISSIONER_CODE: ${{ secrets.PORTAL_COMMISSIONER_CODE }}
           PORTAL_COMMISSIONER_SESSION: ${{ secrets.PORTAL_COMMISSIONER_SESSION }}
           PORTAL_SHEET_WEBHOOK_URL: ${{ secrets.PORTAL_SHEET_WEBHOOK_URL }}
