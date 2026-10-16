@@ -8,7 +8,7 @@ import { Tabs,TabsList,TabsTrigger,TabsContent } from '@/components/ui/tabs';
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from '@/components/ui/dialog';
 import { Select,SelectTrigger,SelectValue,SelectContent,SelectItem } from '@/components/ui/select';
 import { Accordion,AccordionItem,AccordionTrigger,AccordionContent } from '@/components/ui/accordion';
-import { members,sports,markets,formatOdds,statusLabel,selectionText,type Board,type Pick,type Status,type Details,type Settings,type Ticket as TicketRecord } from '@/lib/portal';
+import { members,sports,markets,formatOdds,statusLabel,selectionText,contradiction,contradictionMessage,type Board,type Pick,type Status,type Details,type Settings,type Ticket as TicketRecord } from '@/lib/portal';
 import { OddsBrowser,type OddsFill } from './odds-browser';
 import { Slip,Ticket,PickSearch,searchPicks,filterLabel } from './slip';
 
@@ -116,6 +116,8 @@ function PickEditor({pick,board,busy,error,onClose,onSave}:{pick:Pick|'new';boar
   const tint=Boolean(details.feedAt);
   const display=structured?selectionText(details):selection;
   const duplicate=board.submissions.some(p=>p.member===member&&p.id!==old?.id);
+  // Members can't take the other side of someone else's pick this week; the commissioner can.
+  const clash=structured&&!board.isAdmin&&member?contradiction(details,board.submissions.filter(p=>p.member!==member)):undefined;
   const valid=member&&sport&&(!structured||details.team&&details.opponent&&details.market&&details.eventDate)&&display.length>=3&&Math.abs(Number(odds))>=100&&Number.isInteger(Number(odds));
   return <Dialog open onOpenChange={v=>{if(!v)onClose();}}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>{replacing?`Replace ${member}’s pick`:old?`Edit ${member}’s pick`:'Submit a pick'}</DialogTitle><DialogDescription>{replacing?`Week ${old.week} · ${old.selection} lost. Pick the new bet that goes on the ticket; the lost one stays in the history.`:old?`Week ${old.week} · Changes are recorded in the history.`:'Choose your name and describe one exact selection.'} No accounts or automatic time locks.</DialogDescription></DialogHeader><form className="min-w-0 space-y-4" onSubmit={e=>{e.preventDefault();if(!review){setReview(true);return;}onSave({id:old?.id,revision:old?.revision,season:old?.season||board.settings.season,week:old?.week??board.settings.activeWeek,member,sport:sport==='Other'?otherSport:sport,selection,details:structured?details:{},odds:Number(odds),reason,confirmOwnPick:confirmed});}}>
     <fieldset disabled={busy} className="min-w-0 space-y-4">{!old&&<Choice label="Member" value={member} onChange={v=>{setMember(v);setConfirmed(false);setReview(false);}} options={members}/>}{duplicate&&<p className="error-box">{member} already has a pick. Close this form and use Edit on their card.</p>}{browsing?<><OddsBrowser initialSport={sport} onPick={fromFeed}/><Button type="button" variant="outline" className="min-h-11 w-full" onClick={()=>setBrowsing(false)}>Enter pick manually instead</Button></>:<>
@@ -128,7 +130,7 @@ function PickEditor({pick,board,busy,error,onClose,onSave}:{pick:Pick|'new';boar
     {board.isAdmin&&old&&<Field label="Correction reason" value={reason} onChange={setReason} placeholder="Corrected team / odds from submitted slip" required/>}
     {review&&<div className="rounded-xl border border-[var(--rule)] bg-[var(--paper-2)] p-4"><p className="font-bold">{member}: {display}</p><p className="mt-1 text-sm">{sport} · {formatOdds(Number(odds))}{details.eventDate?` · ${details.eventDate}`:''}</p><label className="check-label mt-3"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>{board.isAdmin?'I confirm these details and odds.':`I am ${member} and these details and odds are correct.`}</label></div>}
     </>}
-    {error&&<p role="alert" className="error-box">{error}</p>}<div className="flex gap-2"><Button className="min-h-11 flex-1" type="submit" disabled={!valid||duplicate||busy||(review&&!confirmed)}>{busy?'Saving…':review?'Save pick':'Review pick'}</Button><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button></div></fieldset></form></DialogContent></Dialog>;
+    {clash&&<p role="alert" className="error-box">{contradictionMessage(clash)}</p>}{error&&<p role="alert" className="error-box">{error}</p>}<div className="flex gap-2"><Button className="min-h-11 flex-1" type="submit" disabled={!valid||duplicate||Boolean(clash)||busy||(review&&!confirmed)}>{busy?'Saving…':review?'Save pick':'Review pick'}</Button><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button></div></fieldset></form></DialogContent></Dialog>;
 }
 function ResultEditor({pick,busy,error,onClose,onSave}:{pick:Pick;busy:boolean;error:string;onClose:()=>void;onSave:(b:unknown)=>void}) {
   const [status,setStatus]=useState<Status>(pick.status),[result,setResult]=useState(pick.evidence.result||''),[source,setSource]=useState(pick.evidence.source||''),[reason,setReason]=useState('');

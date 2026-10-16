@@ -2,8 +2,14 @@ import { env } from 'cloudflare:workers';
 import { isAdmin } from '@/lib/admin';
 import { db, decode, pickColumns, safeWrite } from '@/lib/portal-db';
 import { kickSync, queueStatement } from '@/lib/sheet-sync';
-import { formatOdds, members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
+import { contradiction, contradictionMessage, formatOdds, members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
 const fail=(error:string,status=400)=>Response.json({error},{status});
+// Another member's pick in the same week on the opposite side of the same game, if any.
+// Members are blocked from it; the commissioner can still record what was actually bet.
+async function clashWith(details:Details,season:string,week:number,member:string){
+  const others=(await db().prepare(`SELECT ${pickColumns} FROM submissions WHERE season=? AND week=? AND member!=?`).bind(season,week,member).all()).results.map(r=>decode(r));
+  return contradiction(details,others);
+}
 const settings=()=>db().prepare('SELECT season,active_week AS activeWeek,submissions_open AS submissionsOpen,deadline_label AS deadlineLabel FROM portal_settings WHERE id=1').first<{season:string;activeWeek:number;submissionsOpen:number;deadlineLabel:string}>();
 function audit(id:string,before:Partial<Pick>,after:Partial<Pick>,actor:string,action:string,reason:string,conditional=false) {
   const p=after.id?after:before;
@@ -56,6 +62,7 @@ export async function POST(request:Request) {
     const existing=await db().prepare(`SELECT ${pickColumns} FROM submissions WHERE season=? AND week=? AND member=?`).bind(s.season,s.activeWeek,member).first();
     if(existing){if(existing.selection===fields.selection&&Number(existing.odds)===fields.odds&&existing.sport===fields.sport)return Response.json({...decode(existing),alreadySaved:true});return fail(`${member} already has a pick. Use Edit on their card to replace it.`,409);}
     if(!s.submissionsOpen)return fail('Submissions are manually closed. Ask the commissioner to reopen them.',403);
+    if(!isAdmin(request)){const clash=await clashWith(fields.details,s.season,s.activeWeek,member);if(clash)return fail(contradictionMessage(clash),409);}
     if(await db().prepare('SELECT id FROM submissions WHERE duplicate_key=?').bind(key).first())return fail('That selection is already on the board.',409);
     const now=new Date().toISOString(),id=crypto.randomUUID(),changeId=crypto.randomUUID();
     const pick:Pick={id,season:s.season,week:s.activeWeek,member,...fields,status:'Pending',createdAt:now,updatedAt:now,revision:0,evidence:{}};
@@ -86,6 +93,7 @@ async function mutate(request:Request,action:'edit'|'grade'|'remove') {
     if(action==='edit'){
       const fields=validate(body,!before.details.market),key=`${before.season}|${before.week}|${fields.selection.toLowerCase().replace(/\s+/g,' ')}`;
       if(await db().prepare('SELECT id FROM submissions WHERE duplicate_key=? AND id!=?').bind(key,before.id).first())return fail('That selection is already on the board.',409);
+      if(!admin){const clash=await clashWith(fields.details,before.season,before.week,before.member);if(clash)return fail(contradictionMessage(clash),409);}
       after={...after,...fields,status:'Pending',evidence:{}};
       statement=db().prepare(`UPDATE submissions SET sport=?,selection=?,odds=?,details=?,duplicate_key=?,status='Pending',evidence='{}',revision=revision+1,updated_at=? WHERE id=? AND revision=?
         AND NOT EXISTS (SELECT 1 FROM submissions other WHERE other.duplicate_key=? AND other.id!=submissions.id)

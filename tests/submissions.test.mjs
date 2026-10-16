@@ -49,3 +49,23 @@ test('members cannot replace winning picks or lost picks from past weeks',async(
   f.admin();await f.call('PATCH',{id:p.id,revision:1,status:'Miss',reason:'Regraded'});await f.flush();f.admin(false);f.sql.exec('UPDATE portal_settings SET active_week=2');
   assert.equal((await f.call('PUT',{...replacement,revision:2})).status,403);
   assert.equal(f.sql.prepare('SELECT status FROM submissions').get().status,'Miss');assert.equal(f.sql.prepare("SELECT count(*) n FROM pick_changes WHERE action='replace'").get().n,0);});
+test('members cannot take the other side of another member\'s pick',async()=>{const f=fixture();
+  const game={opponent:'New York Giants',eventDate:'2026-09-27'};
+  assert.equal((await f.call('POST',{...f.body,member:'Brooks',details:{...game,team:'New Orleans Saints',market:'Moneyline'}})).status,201);await f.flush();
+  for(const [member,details] of [['Shan',{team:'Giants',opponent:'Saints',market:'Spread',line:'+1.5',eventDate:'2026-09-27'}],['Kith',{team:'New York Giants',opponent:'New Orleans Saints',market:'Moneyline',eventDate:'2026-09-27'}]]){
+    const r=await f.call('POST',{...f.body,member,details});assert.equal(r.status,409,member);assert.match((await r.json()).error,/other side of Brooks's pick \(New Orleans Saints ML vs New York Giants\)/);}
+  // Same side, another game, or another week's date is fine.
+  assert.equal((await f.call('POST',{...f.body,member:'Nav',details:{...game,team:'New Orleans Saints',market:'Spread',line:'-1.5'}})).status,201);await f.flush();
+  assert.equal((await f.call('POST',{...f.body,member:'Fab',details:{team:'New York Giants',opponent:'Dallas Cowboys',market:'Moneyline',eventDate:'2026-09-27'}})).status,201);await f.flush();
+  // Editing into the other side is blocked too; the commissioner can still record it.
+  const jp=await (await f.call('POST',{...f.body,member:'Jp',details:{team:'Bears',opponent:'Packers',market:'Moneyline',eventDate:'2026-09-27'}})).json();await f.flush();
+  assert.equal((await f.call('PUT',{...f.body,member:'Jp',id:jp.id,revision:0,confirmOwnPick:true,details:{team:'Giants',opponent:'Saints',market:'Moneyline',eventDate:'2026-09-27'}})).status,409);
+  f.admin();assert.equal((await f.call('POST',{...f.body,member:'Shan',details:{team:'Giants',opponent:'Saints',market:'Spread',line:'+1.5',eventDate:'2026-09-27'}})).status,201);});
+test('over and under on the same total or prop are contradictory',async()=>{const f=fixture();
+  const total={team:'Raiders',opponent:'Saints',market:'Game total',line:'43.5',eventDate:'2026-09-27'};
+  assert.equal((await f.call('POST',{...f.body,member:'Brooks',details:{...total,description:'Over'}})).status,201);await f.flush();
+  assert.equal((await f.call('POST',{...f.body,member:'Shan',details:{...total,team:'Saints',opponent:'Raiders',description:'Under'}})).status,409);
+  const prop={team:'Josh Allen',opponent:'Dolphins',market:'Player prop',line:'1.5',eventDate:'2026-09-27'};
+  assert.equal((await f.call('POST',{...f.body,member:'Kith',details:{...prop,description:'Over passing touchdowns'}})).status,201);await f.flush();
+  assert.equal((await f.call('POST',{...f.body,member:'Nav',details:{...prop,description:'Under passing touchdowns'}})).status,409);
+  assert.equal((await f.call('POST',{...f.body,member:'Nav',details:{...prop,line:'225.5',description:'Under passing yards'}})).status,201);});

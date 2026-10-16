@@ -31,3 +31,24 @@ export function selectionText(d: Details) {
   if (d.market === 'Spread') return `${subject} ${d.line?.trim() || ''}${suffix}`;
   return `${subject}${suffix} · ${d.description?.trim() || d.market || ''}${d.line ? ` ${d.line.trim()}` : ''}`;
 }
+
+// Contradictory picks: two members backing opposite sides of the same game.
+// - Moneyline/spread: one backs each team (Saints ML vs Giants +1.5 counts).
+// - Game total: Over and Under on the same game.
+// - Player prop: Over and Under on the same player and stat.
+// "Saints" matches "New Orleans Saints"; picks without a matchup or date are never compared.
+const norm = (s = '') => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const same = (a = '', b = '') => { const x = norm(a), y = norm(b); return Boolean(x && y) && (x === y || x.endsWith(` ${y}`) || y.endsWith(` ${x}`)); };
+const side = (d: Details) => /^\s*over\b/i.test(d.description || '') ? 'over' : /^\s*under\b/i.test(d.description || '') ? 'under' : '';
+const stat = (d: Details) => norm((d.description || '').replace(/^\s*(over|under)\b/i, ''));
+export function contradicts(a: Details, b: Details) {
+  if (!a.team || !b.team || !a.eventDate || a.eventDate !== b.eventDate) return false;
+  const sides = ['Moneyline', 'Spread'];
+  if (sides.includes(a.market || '') && sides.includes(b.market || '')) return Boolean(a.opponent && b.opponent) && same(a.team, b.opponent) && same(a.opponent, b.team);
+  if (a.market !== b.market || !side(a) || !side(b) || side(a) === side(b)) return false;
+  if (a.market === 'Game total') return Boolean(a.opponent && b.opponent) && ((same(a.team, b.team) && same(a.opponent, b.opponent)) || (same(a.team, b.opponent) && same(a.opponent, b.team)));
+  if (a.market === 'Player prop') return same(a.team, b.team) && stat(a) === stat(b);
+  return false;
+}
+export const contradiction = (d: Details, others: Pick[]) => others.find(o => contradicts(d, o.details));
+export const contradictionMessage = (o: Pick) => `That's the other side of ${o.member}'s pick (${o.selection}). Choose a different bet.`;
