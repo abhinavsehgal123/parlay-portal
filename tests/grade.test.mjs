@@ -17,14 +17,15 @@ function fixture(){
   }};
   function load(file){file=resolve(root,file);if(cache.has(file))return cache.get(file);const exports={};cache.set(file,exports);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
     const require=p=>p==='cloudflare:workers'?{env,waitUntil(){}}:load(p.startsWith('@/')?p.slice(2)+'.ts':resolve(dirname(file),p+'.ts'));
-    vm.runInNewContext(code,{exports,require,Response,Request,crypto,URL,Intl,JSON,Date,console:{error(){},info(){}}});return exports;
+    vm.runInNewContext(code,{exports,require,Response,Request,AbortSignal,URLSearchParams,crypto,URL,Intl,JSON,Date,console:{error(){},info(){}},fetch:async()=>Response.json([])});return exports;
   }
   let n=0;
   const add=(member,details,status='Pending')=>{const id=`p${++n}`;sql.prepare(`INSERT INTO submissions (id,season,week,member,sport,selection,odds,status,duplicate_key,created_at,updated_at,details,evidence,revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'{}',0)`).run(id,'2026 Season',5,member,'NFL',`${member} pick`,-110,status,`k${n}`,'2026-10-08T12:00:00Z','',JSON.stringify(details));return id;};
   const route=load('app/api/grade/route.ts');
   const call=(method,body,token=GRADER)=>route[method](new Request('https://portal.invalid/api/grade',{method,headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}));
   const row=id=>sql.prepare('SELECT status,revision,evidence FROM submissions WHERE id=?').get(id);
-  return {sql,add,call,row,route,onGrade(fn){beforeGrade=fn;}};
+  const post=(path,token=GRADER)=>load(`app/api/grade/${path}/route.ts`).POST(new Request(`https://portal.invalid/api/grade/${path}`,{method:'POST',headers:{authorization:`Bearer ${token}`}}));
+  return {sql,add,call,row,route,post,onGrade(fn){beforeGrade=fn;}};
 }
 const prop={team:'Jalon Daniels',opponent:'Dallas Cowboys',market:'Player prop',line:'44.5',description:'Over passing yards',eventDate:'2026-10-01'};
 const grade=(id,extra={})=>({id,revision:0,status:'Hit',result:'Jalon Daniels: 251 passing yards (final)',source:'https://www.espn.com/nfl/boxscore/_/gameId/1',reason:'251 yards cleared the 44.5 line',...extra});
@@ -72,4 +73,12 @@ test('only the grader token works',async()=>{
   assert.equal((await f.call('POST',grade(id),SCHEDULE)).status,401);
   assert.equal((await f.call('GET',null,'nope')).status,401);
   assert.equal(f.row(id).status,'Pending');
+});
+test('routines can run the score check and the weekly rollover with the grader token only',async()=>{
+  const f=fixture();f.add('CJ',{...prop,eventDate:'2026-09-01'},'Hit');f.sql.exec('UPDATE portal_settings SET active_week=5');
+  for(const path of ['scores','finalize']){assert.equal((await f.post(path,SCHEDULE)).status,401);assert.equal((await f.post(path,'nope')).status,401);}
+  const scores=await f.post('scores');assert.equal(scores.status,200);assert.equal(typeof (await scores.json()).ran,'boolean');
+  const fin=await f.post('finalize');assert.equal(fin.status,200);const r=await fin.json();assert.equal(r.finalized,true);assert.equal(r.nextWeek,6);
+  assert.equal(f.sql.prepare('SELECT active_week w FROM portal_settings').get().w,6);
+  assert.equal((await (await f.post('finalize')).json()).finalized,false);
 });

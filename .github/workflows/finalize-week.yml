@@ -1,12 +1,10 @@
 name: Finalize the week
 
-# Every Tuesday morning: settle any finished games, finalize the active week
-# (pending legs stay pending for the commissioner) and open the next one.
-# GitHub schedules are UTC; this is 6:17 AM Eastern daylight time (5:17 AM in
-# standard time), off the :00 and :30 marks when GitHub is busiest.
+# Settles any finished games, finalizes the active week (pending legs stay
+# pending for the commissioner) and opens the next one. This is the manual
+# backup: the Tuesday-morning Claude routine runs it on schedule (see
+# docs/claude-grader.md), because GitHub delayed or dropped scheduled runs.
 on:
-  schedule:
-    - cron: '17 10 * * 2'
   workflow_dispatch:
 
 permissions: {}

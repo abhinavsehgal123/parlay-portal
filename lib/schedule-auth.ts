@@ -12,5 +12,6 @@ function bearer(request: Request, expected = '') {
 // The scheduled jobs' token (PORTAL_RESULTS_TOKEN, shared by the score check and weekly finalize).
 export const scheduleToken = (request: Request) => bearer(request, env.PORTAL_RESULTS_TOKEN);
 
-// The Claude grader's token (PORTAL_GRADER_TOKEN). It can only read pending picks and grade them.
+// The Claude routines' token (PORTAL_GRADER_TOKEN). It can read pending picks and grade them,
+// run the final-score check and run the Tuesday rollover. It can't edit picks or settings.
 export const graderToken = (request: Request) => bearer(request, env.PORTAL_GRADER_TOKEN);

@@ -1,15 +1,9 @@
 name: Check final scores
 
-# Asks the portal to settle finished games from final scores. GitHub schedules
-# are UTC; these are set for Eastern daylight time, so during standard time
-# each run lands an hour earlier. Times avoid :00 and :30, when GitHub is busiest
-# and most likely to delay or drop scheduled runs.
+# Asks the portal to settle finished games from final scores. This is the
+# manual backup: the scheduled checks run from the Claude routines (see
+# docs/claude-grader.md), because GitHub delayed or dropped many scheduled runs.
 on:
-  schedule:
-    - cron: '23 3 * * 5,6'          # Thursday and Friday, 11:23 PM ET
-    - cron: '7 17,19,21,23 * * 6,0' # Saturday and Sunday, 1:07, 3:07, 5:07 and 7:07 PM ET
-    - cron: '7 1,3,5 * * 0,1'       # Saturday and Sunday, 9:07 and 11:07 PM and 1:07 AM ET
-    - cron: '23 5 * * 2'            # Monday night games, 1:23 AM ET Tuesday
   workflow_dispatch:
 
 permissions: {}
