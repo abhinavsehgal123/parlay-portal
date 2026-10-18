@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { db } from './portal-db';
-import { fanduelIds, oddsSports } from './portal';
+import { fanduelPath, oddsSports } from './portal';
 export { oddsSports };
 
 // FanDuel game lines via The Odds API, sized for its free plan (500 credits a
@@ -19,27 +19,21 @@ export const ODDS_WINDOW_DAYS = 7;
 const MARKETS = ['h2h', 'spreads', 'totals'];
 const COST = MARKETS.length;
 
-// bet: FanDuel's IDs for adding this line to a betslip, when the provider sends them.
-export type OddsOutcome = { name: string; price: number; point?: number; bet?: { marketId: string; selectionId: string } };
-export type OddsEvent = { id: string; commence: string; home: string; away: string; h2h: OddsOutcome[]; spreads: OddsOutcome[]; totals: OddsOutcome[] };
+export type OddsOutcome = { name: string; price: number; point?: number };
+// fdPath: the game's page on FanDuel, when the provider sends it.
+export type OddsEvent = { id: string; commence: string; home: string; away: string; h2h: OddsOutcome[]; spreads: OddsOutcome[]; totals: OddsOutcome[]; fdPath?: string };
 export type OddsBoard = { sport: string; label: string; events: OddsEvent[]; fetchedAt: string | null; stale: boolean; paused: boolean; unavailable: boolean };
 
-type RawOutcome = { name?: unknown; price?: unknown; point?: unknown; link?: unknown; sid?: unknown };
-type RawMarket = { key?: unknown; sid?: unknown; outcomes?: RawOutcome[] };
-type Raw = { id?: unknown; commence_time?: unknown; home_team?: unknown; away_team?: unknown; bookmakers?: { key?: unknown; markets?: RawMarket[] }[] };
+type Raw = { id?: unknown; commence_time?: unknown; home_team?: unknown; away_team?: unknown; bookmakers?: { key?: unknown; link?: unknown; markets?: { key?: unknown; outcomes?: { name?: unknown; price?: unknown; point?: unknown }[] }[] }[] };
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
-// FanDuel's betslip IDs for an outcome: read from its addToBetslip link, else from the source IDs.
-function betOf(o: RawOutcome, m: RawMarket) {
+// The path of FanDuel's page for a game, from the provider's event link.
+function gamePath(link: unknown) {
   try {
-    const link = new URL(str(o.link));
-    if (/(^|\.)sportsbook\.fanduel\.com$/.test(link.hostname) && link.pathname === '/addToBetslip') {
-      const marketId = link.searchParams.get('marketId') || '', selectionId = link.searchParams.get('selectionId') || '';
-      if (fanduelIds(marketId, selectionId)) return { marketId, selectionId };
-    }
+    const url = new URL(str(link));
+    if (url.protocol === 'https:' && /(^|\.)sportsbook\.fanduel\.com$/.test(url.hostname) && fanduelPath(url.pathname)) return url.pathname;
   } catch { /* no usable link */ }
-  const marketId = typeof m.sid === 'number' ? String(m.sid) : str(m.sid), selectionId = typeof o.sid === 'number' ? String(o.sid) : str(o.sid);
-  return fanduelIds(marketId, selectionId) ? { marketId, selectionId } : undefined;
+  return undefined;
 }
 
 // Keeps only FanDuel prices with valid American odds; drops anything else the
@@ -53,10 +47,11 @@ export function normalize(raw: unknown, now: number): OddsEvent[] {
     if (!id || !home || !away || !Number.isFinite(start) || start < now || start > until) continue;
     const book = e.bookmakers?.find(b => b.key === 'fanduel');
     if (!book) continue;
-    const market = (key: string) => { const m = book.markets?.find(x => x.key === key); return (m?.outcomes ?? [])
-      .map(o => { const bet = betOf(o, m!); return { name: str(o.name), price: Number(o.price), ...(typeof o.point === 'number' ? { point: o.point } : {}), ...(bet ? { bet } : {}) }; })
-      .filter(o => o.name && Number.isInteger(o.price) && Math.abs(o.price) >= 100 && (key === 'h2h' || (o.point !== undefined && Number.isFinite(o.point)))); };
-    const event = { id, commence, home, away, h2h: market('h2h'), spreads: market('spreads'), totals: market('totals') };
+    const market = (key: string) => (book.markets?.find(m => m.key === key)?.outcomes ?? [])
+      .map(o => ({ name: str(o.name), price: Number(o.price), ...(typeof o.point === 'number' ? { point: o.point } : {}) }))
+      .filter(o => o.name && Number.isInteger(o.price) && Math.abs(o.price) >= 100 && (key === 'h2h' || (o.point !== undefined && Number.isFinite(o.point))));
+    const fdPath = gamePath(book.link);
+    const event = { id, commence, home, away, h2h: market('h2h'), spreads: market('spreads'), totals: market('totals'), ...(fdPath ? { fdPath } : {}) };
     if (event.h2h.length || event.spreads.length || event.totals.length) events.push(event);
   }
   return events.sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
@@ -104,7 +99,7 @@ export async function getOdds(sportKey: string, now = Date.now()): Promise<OddsB
   try {
     const url = new URL(`https://api.the-odds-api.com/v4/sports/${sport.key}/odds`);
     const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
-    url.search = new URLSearchParams({ apiKey: env.ODDS_API_KEY, bookmakers: 'fanduel', markets: MARKETS.join(','), oddsFormat: 'american', dateFormat: 'iso', includeLinks: 'true', includeSids: 'true', commenceTimeFrom: iso(now), commenceTimeTo: iso(now + ODDS_WINDOW_DAYS * 86400000) }).toString();
+    url.search = new URLSearchParams({ apiKey: env.ODDS_API_KEY, bookmakers: 'fanduel', markets: MARKETS.join(','), oddsFormat: 'american', dateFormat: 'iso', includeLinks: 'true', commenceTimeFrom: iso(now), commenceTimeTo: iso(now + ODDS_WINDOW_DAYS * 86400000) }).toString();
     const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const remaining = Number(response.headers.get('x-requests-remaining'));
     if (Number.isFinite(remaining) && response.headers.has('x-requests-remaining')) await db().prepare('UPDATE odds_usage SET remaining = ? WHERE week_start = ?').bind(Math.floor(remaining), week).run();

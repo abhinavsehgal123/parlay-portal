@@ -1,8 +1,8 @@
 'use client';
 import { Fragment,useState } from 'react';
 import { ChevronDown,ExternalLink,Pencil,Repeat,Search,X } from 'lucide-react';
-import { Button,buttonVariants } from '@/components/ui/button';
-import { betslipLink,formatOdds,hasBetslipLink,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
+import { Button } from '@/components/ui/button';
+import { fanduelGameLink,formatOdds,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
 
 // Picks are shown as a printed parlay ticket: a row per leg, grouped by game
 // day, with members who have not picked yet listed last. Tapping a row opens
@@ -130,19 +130,18 @@ export function Ticket({board,picks,missing,members,ticket,outcome,onCopy,...act
   </article>;
 }
 
-// Opens this week's ungraded legs on a FanDuel betslip. Legs picked from the FanDuel
-// lines carry FanDuel's IDs; anything typed in by hand (props, manual picks) is listed
-// to add in the app. Placing the bet always stays with whoever places the ticket.
+// Each ungraded leg links to its game's page in FanDuel, so whoever places the ticket can
+// tap through the legs instead of searching. Legs typed in by hand (props, manual picks)
+// have no link and are listed to search for. Placing the bet always stays with them.
 function FanDuelSlip({picks}:{picks:Pick[]}) {
-  const legs=picks.filter(p=>p.status==='Pending'),linked=legs.filter(p=>hasBetslipLink(p.details)),manual=legs.filter(p=>!hasBetslipLink(p.details));
-  const all=betslipLink(linked);
+  const legs=picks.filter(p=>p.status==='Pending'),linked=legs.filter(p=>fanduelGameLink(p.details)),manual=legs.filter(p=>!fanduelGameLink(p.details));
   if(!legs.length)return null;
-  return <section className="border-t border-[var(--rule)] px-5 py-4" aria-label="Open in FanDuel">
-    {all?<a className={buttonVariants({className:'btn-flag min-h-12 w-full rounded-lg sm:w-auto sm:px-7'})} href={all} target="_blank" rel="noreferrer"><ExternalLink className="size-4"/>Open {linked.length===1?'1 leg':`${linked.length} legs`} in FanDuel</a>
-      :<p className="text-sm text-[var(--ink-2)]">No legs can open in FanDuel yet. Picks chosen from the FanDuel lines on this site can.</p>}
-    {all&&<p className="mt-2 text-xs text-[var(--ink-2)]">Adds them to your FanDuel betslip. Check each price, enter the stake and place it yourself.</p>}
-    {manual.length>0&&<p className="mt-3 text-sm"><span className="font-semibold">Add by hand in FanDuel:</span> {manual.map(p=>`${p.member} (${p.selection})`).join(' · ')}</p>}
-    {linked.length>1&&<details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">Open one leg at a time</summary><ul className="mt-2 space-y-1.5">{linked.map(p=><li key={p.id}><a className="underline" href={betslipLink([p])!} target="_blank" rel="noreferrer">{p.member}: {p.selection} ({formatOdds(p.odds)})</a></li>)}</ul></details>}
+  return <section className="border-t border-[var(--rule)] px-5 py-4" aria-labelledby="fanduel-legs">
+    <h3 id="fanduel-legs" className="font-bold">Place it in FanDuel</h3>
+    {linked.length>0?<><p className="mt-1 text-sm text-[var(--ink-2)]">Each link opens that game in FanDuel. Tap the matching line, then come back for the next leg.</p>
+      <ul className="mt-3 space-y-2">{linked.map(p=><li key={p.id}><a className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-[var(--rule)] bg-white px-3 py-2 text-sm hover:border-[var(--turf)]" href={fanduelGameLink(p.details)!} target="_blank" rel="noreferrer"><span className="min-w-0"><span className="font-semibold">{p.member}:</span> {p.selection} <span className="tabular-nums text-[var(--ink-2)]">({formatOdds(p.odds)})</span></span><ExternalLink aria-hidden="true" className="size-4 shrink-0 text-[var(--turf)]"/><span className="sr-only">Opens in FanDuel</span></a></li>)}</ul></>
+      :<p className="mt-1 text-sm text-[var(--ink-2)]">Picks chosen from the FanDuel lines on this site get a link to their game here.</p>}
+    {manual.length>0&&<p className="mt-3 text-sm"><span className="font-semibold">Search for these in FanDuel:</span> {manual.map(p=>`${p.member} (${p.selection})`).join(' · ')}</p>}
   </section>;
 }
 
