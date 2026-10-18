@@ -1,8 +1,8 @@
 'use client';
 import { Fragment,useState } from 'react';
-import { ChevronDown,ExternalLink,Pencil,Repeat,Search,X } from 'lucide-react';
+import { Check,ChevronDown,Copy,Pencil,Repeat,Search,X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { fanduelGameLink,formatOdds,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
+import { formatOdds,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
 
 // Picks are shown as a printed parlay ticket: a row per leg, grouped by game
 // day, with members who have not picked yet listed last. Tapping a row opens
@@ -125,23 +125,34 @@ export function Ticket({board,picks,missing,members,ticket,outcome,onCopy,...act
     <div className="perforation" aria-hidden="true"/>
     <div className="px-5 pb-3 pt-4"><PickSearch query={query} filter={filter} onQuery={setQuery} onFilter={setFilter} label="Search this week's picks" placeholder="Team, player or member"/>{searching&&<p className="mt-2 text-sm text-[var(--ink-2)]" aria-live="polite">{hits.length===1?'1 pick':`${hits.length} picks`} of {picks.length}{filter!=='all'?`, ${filterLabel(filter)} only`:''}.</p>}</div>
     {searching&&!hits.length&&!shownMissing.length?<p className="border-t border-[var(--rule)] px-5 py-6 text-[var(--ink-2)]">No picks on this ticket match. Clear the search to see every leg.</p>:<Slip picks={searching?hits:picks} missing={shownMissing} board={board} terms={terms} {...actions}/>}
-    <FanDuelSlip picks={picks}/>
+    <PlaceChecklist picks={picks} week={`${board.settings.season}|${board.settings.activeWeek}`}/>
     <footer className="ticket-foot"><p>Tap a leg for details. Picks stay editable until they’re graded.</p><Button variant="outline" disabled={!picks.length} onClick={onCopy}>Copy picks</Button></footer>
   </article>;
 }
 
-// Each ungraded leg links to its game's page in FanDuel, so whoever places the ticket can
-// tap through the legs instead of searching. Legs typed in by hand (props, manual picks)
-// have no link and are listed to search for. Placing the bet always stays with them.
-function FanDuelSlip({picks}:{picks:Pick[]}) {
-  const legs=picks.filter(p=>p.status==='Pending'),linked=legs.filter(p=>fanduelGameLink(p.details)),manual=legs.filter(p=>!fanduelGameLink(p.details));
+// A checklist for whoever places the ticket in FanDuel. FanDuel's links from the odds feed
+// don't work here: it runs a separate sportsbook per state and the feed's IDs aren't New
+// York's. So each leg gets the name to paste into FanDuel's search and a box to tick once
+// it's on the betslip. Ticks are kept on this device only and reset when a pick is edited.
+const searchTerm=(p:Pick)=>(p.details.team||p.selection).trim();
+function PlaceChecklist({picks,week}:{picks:Pick[];week:string}) {
+  const key=`fanduel-added:${week}`;
+  const [added,setAdded]=useState<string[]>(()=>{try{const v=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(v)?v.filter(x=>typeof x==='string'):[];}catch{return [];}});
+  const [copied,setCopied]=useState('');
+  const legs=picks.filter(p=>p.status==='Pending').sort((a,b)=>(a.details.eventDate||'9').localeCompare(b.details.eventDate||'9')||a.member.localeCompare(b.member));
   if(!legs.length)return null;
-  return <section className="border-t border-[var(--rule)] px-5 py-4" aria-labelledby="fanduel-legs">
-    <h3 id="fanduel-legs" className="font-bold">Place it in FanDuel</h3>
-    {linked.length>0?<><p className="mt-1 text-sm text-[var(--ink-2)]">Each link opens that game in FanDuel. Tap the matching line, then come back for the next leg.</p>
-      <ul className="mt-3 space-y-2">{linked.map(p=><li key={p.id}><a className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-[var(--rule)] bg-white px-3 py-2 text-sm hover:border-[var(--turf)]" href={fanduelGameLink(p.details)!} target="_blank" rel="noreferrer"><span className="min-w-0"><span className="font-semibold">{p.member}:</span> {p.selection} <span className="tabular-nums text-[var(--ink-2)]">({formatOdds(p.odds)})</span></span><ExternalLink aria-hidden="true" className="size-4 shrink-0 text-[var(--turf)]"/><span className="sr-only">Opens in FanDuel</span></a></li>)}</ul></>
-      :<p className="mt-1 text-sm text-[var(--ink-2)]">Picks chosen from the FanDuel lines on this site get a link to their game here.</p>}
-    {manual.length>0&&<p className="mt-3 text-sm"><span className="font-semibold">Search for these in FanDuel:</span> {manual.map(p=>`${p.member} (${p.selection})`).join(' · ')}</p>}
+  const tick=(p:Pick)=>`${p.id}:${p.revision}`;
+  const save=(next:string[])=>{setAdded(next);try{localStorage.setItem(key,JSON.stringify(next));}catch{/* this device only */}};
+  const toggle=(p:Pick)=>save(added.includes(tick(p))?added.filter(x=>x!==tick(p)):[...added,tick(p)]);
+  const copy=(p:Pick)=>{navigator.clipboard?.writeText(searchTerm(p)).then(()=>setCopied(p.id),()=>setCopied(''));};
+  const count=legs.filter(p=>added.includes(tick(p))).length;
+  return <section className="border-t border-[var(--rule)] px-5 py-4" aria-labelledby="place-in-fanduel">
+    <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 id="place-in-fanduel" className="font-bold">Place it in FanDuel</h3><p className="text-sm text-[var(--ink-2)]" aria-live="polite">{count} of {legs.length} added{count>0&&<> · <button type="button" className="underline" onClick={()=>save([])}>Clear</button></>}</p></div>
+    <p className="mt-1 text-sm text-[var(--ink-2)]">Copy a name, paste it into FanDuel’s search, add the line, then tick it off.</p>
+    <ul className="mt-3 space-y-2">{legs.map(p=>{const on=added.includes(tick(p));return <li key={p.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${on?'border-[var(--turf)] bg-[var(--paper-2)]':'border-[var(--rule)] bg-white'}`}>
+      <label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm"><input type="checkbox" className="size-5 shrink-0 accent-[var(--turf)]" checked={on} onChange={()=>toggle(p)}/><span className={`min-w-0 ${on?'text-[var(--ink-2)] line-through':''}`}><span className="font-semibold">{p.member}:</span> {p.selection} <span className="tabular-nums text-[var(--ink-2)]">({formatOdds(p.odds)}{p.details.eventDate?`, ${dayLabel(p.details.eventDate)}`:''})</span></span></label>
+      <Button type="button" variant="outline" className="min-h-11 shrink-0" onClick={()=>copy(p)} aria-label={`Copy ${searchTerm(p)} to search in FanDuel`}>{copied===p.id?<Check className="size-4"/>:<Copy className="size-4"/>}<span className="max-w-[7rem] truncate">{copied===p.id?'Copied':searchTerm(p)}</span></Button>
+    </li>;})}</ul>
   </section>;
 }
 

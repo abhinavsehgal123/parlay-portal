@@ -13,8 +13,7 @@ export const oddsSports = [
 ] as const;
 export const markets = ['Moneyline', 'Spread', 'Game total', 'Player prop', 'Other'];
 export type Status = 'Pending' | 'Hit' | 'Miss' | 'Push' | 'Void';
-// fdEvent is the path of the game's FanDuel page, kept when a pick is filled from the FanDuel feed.
-export type Details = { team?: string; opponent?: string; market?: string; line?: string; eventDate?: string; description?: string; feedAt?: string; fdEvent?: string };
+export type Details = { team?: string; opponent?: string; market?: string; line?: string; eventDate?: string; description?: string; feedAt?: string };
 export type Evidence = { result?: string; source?: string; reason?: string; gradedAt?: string };
 export type Pick = { id: string; season: string; week: number; member: string; sport: string; selection: string; odds: number; status: Status; createdAt: string; updatedAt: string; revision: number; details: Details; evidence: Evidence };
 export type Settings = { season: string; activeWeek: number; submissionsOpen: boolean; deadlineLabel: string };
@@ -53,9 +52,3 @@ export function contradicts(a: Details, b: Details) {
 }
 export const contradiction = (d: Details, others: Pick[]) => others.find(o => contradicts(d, o.details));
 export const contradictionMessage = (o: Pick) => `That's the other side of ${o.member}'s pick (${o.selection}). Choose a different bet.`;
-
-// Links to a game's page on FanDuel. FanDuel's add-to-betslip links from the odds feed
-// were tried and FanDuel rejected them, so each leg links to its game instead.
-// Only plain sportsbook.fanduel.com page paths are kept.
-export const fanduelPath = (path?: string) => /^\/[a-z0-9][a-z0-9\-/@.%]*$/i.test(path || '') && !(path || '').includes('//') && (path || '').length <= 300;
-export const fanduelGameLink = (d: Details) => fanduelPath(d.fdEvent) ? `https://sportsbook.fanduel.com${d.fdEvent}` : null;

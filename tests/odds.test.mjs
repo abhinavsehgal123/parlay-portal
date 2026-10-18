@@ -30,7 +30,7 @@ function fixture({key=KEY,remaining=400,fail=false}={}){
     const require=p=>p==='cloudflare:workers'?{env,waitUntil(){}}:p==='@/lib/admin'?{isAdmin:()=>false}:load(p.startsWith('@/')?p.slice(2)+'.ts':resolve(dirname(file),p+'.ts'));
     vm.runInNewContext(code,{exports,require,Response,Request,AbortSignal,crypto,URL,URLSearchParams,Intl,JSON,console:{error:(...a)=>logs.push(JSON.stringify(a)),info(){}},fetch});return exports;
   }
-  return {sql,urls,logs,portal:load('lib/portal.ts'),odds:load('lib/odds.ts'),route:load('app/api/odds/route.ts'),submissions:load('app/api/submissions/route.ts')};
+  return {sql,urls,logs,odds:load('lib/odds.ts'),route:load('app/api/odds/route.ts'),submissions:load('app/api/submissions/route.ts')};
 }
 test('keeps only valid FanDuel lines inside the next 7 days',()=>{
   const f=fixture();const events=f.odds.normalize(sample(),NOW);
@@ -91,30 +91,4 @@ test('picks keep a valid feed timestamp and drop malformed ones',async()=>{
   assert.equal((await post({...base,member:'Nav',odds:120,details:{...base.details,market:'Moneyline',line:'',feedAt:'<script>'}})).status,201);
   const rows=f.sql.prepare('SELECT member,details FROM submissions ORDER BY member').all().map(r=>[r.member,JSON.parse(r.details).feedAt]);
   assert.deepEqual(rows,[['Drew','2026-10-08T13:42:00.000Z'],['Nav',undefined]]);
-});
-test('keeps the FanDuel game page path, and only real FanDuel ones',()=>{
-  const f=fixture();
-  const raw=sample();raw[0].bookmakers[0].link='https://sportsbook.fanduel.com/football/nfl/las-vegas-raiders-@-new-orleans-saints-34567890';
-  assert.equal(f.odds.normalize(raw,NOW)[0].fdPath,'/football/nfl/las-vegas-raiders-@-new-orleans-saints-34567890');
-  for(const link of ['https://evil.example/football/nfl/x-1','http://sportsbook.fanduel.com/football/nfl/x-1','javascript:alert(1)','https://sportsbook.fanduel.com/','not a url']){
-    raw[0].bookmakers[0].link=link;assert.equal(f.odds.normalize(raw,NOW)[0].fdPath,undefined,link);}
-});
-test('odds requests ask for FanDuel links',async()=>{
-  const f=fixture();await f.odds.getOdds('americanfootball_nfl',NOW);
-  assert.match(f.urls[0],/includeLinks=true/);
-});
-test('submitted picks keep a valid FanDuel game path and drop anything else',async()=>{
-  const f=fixture();
-  const post=details=>f.submissions.POST(new Request('https://portal.invalid/api/submissions',{method:'POST',headers:{origin:'https://portal.invalid'},body:JSON.stringify({member:'Drew',sport:'NFL',odds:-142,season:'2026 Season',week:1,details})}));
-  const base={team:'New Orleans Saints',opponent:'Las Vegas Raiders',market:'Moneyline',eventDate:'2026-10-11'};
-  const ok=await (await post({...base,fdEvent:'/football/nfl/las-vegas-raiders-@-new-orleans-saints-34567890'})).json();
-  assert.equal(ok.details.fdEvent,'/football/nfl/las-vegas-raiders-@-new-orleans-saints-34567890');
-  for(const fdEvent of ['//evil.example/x','https://evil.example/x','/x?y=1','/x"onmouseover=1']){
-    f.sql.exec('DELETE FROM submissions');
-    const bad=await (await post({...base,fdEvent})).json();assert.equal(bad.details.fdEvent,undefined,fdEvent);}
-});
-test('game links point at the game page on FanDuel',()=>{
-  const portal=fixture().portal;
-  assert.equal(portal.fanduelGameLink({fdEvent:'/football/nfl/a-@-b-1'}),'https://sportsbook.fanduel.com/football/nfl/a-@-b-1');
-  assert.equal(portal.fanduelGameLink({}),null);assert.equal(portal.fanduelGameLink({fdEvent:'//evil.example'}),null);
 });
