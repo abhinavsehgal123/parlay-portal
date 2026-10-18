@@ -30,7 +30,7 @@ function fixture({key=KEY,remaining=400,fail=false}={}){
     const require=p=>p==='cloudflare:workers'?{env,waitUntil(){}}:p==='@/lib/admin'?{isAdmin:()=>false}:load(p.startsWith('@/')?p.slice(2)+'.ts':resolve(dirname(file),p+'.ts'));
     vm.runInNewContext(code,{exports,require,Response,Request,AbortSignal,crypto,URL,URLSearchParams,Intl,JSON,console:{error:(...a)=>logs.push(JSON.stringify(a)),info(){}},fetch});return exports;
   }
-  return {sql,urls,logs,odds:load('lib/odds.ts'),route:load('app/api/odds/route.ts'),submissions:load('app/api/submissions/route.ts')};
+  return {sql,urls,logs,portal:load('lib/portal.ts'),odds:load('lib/odds.ts'),route:load('app/api/odds/route.ts'),submissions:load('app/api/submissions/route.ts')};
 }
 test('keeps only valid FanDuel lines inside the next 7 days',()=>{
   const f=fixture();const events=f.odds.normalize(sample(),NOW);
@@ -91,4 +91,37 @@ test('picks keep a valid feed timestamp and drop malformed ones',async()=>{
   assert.equal((await post({...base,member:'Nav',odds:120,details:{...base.details,market:'Moneyline',line:'',feedAt:'<script>'}})).status,201);
   const rows=f.sql.prepare('SELECT member,details FROM submissions ORDER BY member').all().map(r=>[r.member,JSON.parse(r.details).feedAt]);
   assert.deepEqual(rows,[['Drew','2026-10-08T13:42:00.000Z'],['Nav',undefined]]);
+});
+test('keeps FanDuel betslip IDs from links or source IDs, and only real FanDuel ones',()=>{
+  const f=fixture();
+  const raw=sample();const h2h=raw[0].bookmakers[0].markets[0];h2h.sid='42.448600011';
+  h2h.outcomes[0].link='https://sportsbook.fanduel.com/addToBetslip?marketId=42.448600011&selectionId=29165';
+  h2h.outcomes[1].sid='29166';
+  raw[0].bookmakers[0].markets[2].outcomes[0].link='https://evil.example/addToBetslip?marketId=1&selectionId=2';
+  raw[0].bookmakers[0].markets[2].outcomes[1].link='https://sportsbook.fanduel.com/addToBetslip?marketId=1;drop&selectionId=2';
+  const [e]=f.odds.normalize(raw,NOW);
+  assert.deepEqual({...e.h2h[0].bet},{marketId:'42.448600011',selectionId:'29165'});
+  assert.deepEqual({...e.h2h[1].bet},{marketId:'42.448600011',selectionId:'29166'});
+  assert.equal(e.totals[0].bet,undefined);assert.equal(e.totals[1].bet,undefined);
+});
+test('odds requests ask for FanDuel links',async()=>{
+  const f=fixture();await f.odds.getOdds('americanfootball_nfl',NOW);
+  assert.match(f.urls[0],/includeLinks=true/);assert.match(f.urls[0],/includeSids=true/);
+});
+test('submitted picks keep valid FanDuel IDs and drop anything else',async()=>{
+  const f=fixture();
+  const post=details=>f.submissions.POST(new Request('https://portal.invalid/api/submissions',{method:'POST',headers:{origin:'https://portal.invalid'},body:JSON.stringify({member:'Drew',sport:'NFL',odds:-142,season:'2026 Season',week:1,details})}));
+  const base={team:'New Orleans Saints',opponent:'Las Vegas Raiders',market:'Moneyline',eventDate:'2026-10-11'};
+  const ok=await (await post({...base,fdMarket:'42.448600011',fdSelection:'29165'})).json();
+  assert.equal(ok.details.fdMarket,'42.448600011');assert.equal(ok.details.fdSelection,'29165');
+  f.sql.exec('DELETE FROM submissions');
+  const bad=await (await post({...base,fdMarket:'42&x=1',fdSelection:'29165'})).json();
+  assert.equal(bad.details.fdMarket,undefined);assert.equal(bad.details.fdSelection,undefined);
+});
+test('betslip links put one or several legs on a FanDuel betslip',()=>{
+  const portal=fixture().portal;
+  const leg=(m,s)=>({details:{fdMarket:m,fdSelection:s}});
+  assert.equal(portal.betslipLink([leg('42.1','7')]),'https://sportsbook.fanduel.com/addToBetslip?marketId=42.1&selectionId=7');
+  assert.equal(portal.betslipLink([leg('42.1','7'),{details:{}},leg('43.2','8')]),'https://sportsbook.fanduel.com/addToBetslip?marketId[0]=42.1&selectionId[0]=7&marketId[1]=43.2&selectionId[1]=8');
+  assert.equal(portal.betslipLink([{details:{}}]),null);
 });

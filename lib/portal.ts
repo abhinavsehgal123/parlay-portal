@@ -13,7 +13,8 @@ export const oddsSports = [
 ] as const;
 export const markets = ['Moneyline', 'Spread', 'Game total', 'Player prop', 'Other'];
 export type Status = 'Pending' | 'Hit' | 'Miss' | 'Push' | 'Void';
-export type Details = { team?: string; opponent?: string; market?: string; line?: string; eventDate?: string; description?: string; feedAt?: string };
+// fdMarket/fdSelection are FanDuel's own IDs for the line, kept when a pick is filled from the FanDuel feed.
+export type Details = { team?: string; opponent?: string; market?: string; line?: string; eventDate?: string; description?: string; feedAt?: string; fdMarket?: string; fdSelection?: string };
 export type Evidence = { result?: string; source?: string; reason?: string; gradedAt?: string };
 export type Pick = { id: string; season: string; week: number; member: string; sport: string; selection: string; odds: number; status: Status; createdAt: string; updatedAt: string; revision: number; details: Details; evidence: Evidence };
 export type Settings = { season: string; activeWeek: number; submissionsOpen: boolean; deadlineLabel: string };
@@ -52,3 +53,16 @@ export function contradicts(a: Details, b: Details) {
 }
 export const contradiction = (d: Details, others: Pick[]) => others.find(o => contradicts(d, o.details));
 export const contradictionMessage = (o: Pick) => `That's the other side of ${o.member}'s pick (${o.selection}). Choose a different bet.`;
+
+// FanDuel "add to betslip" links. One leg uses FanDuel's documented form
+// (?marketId=…&selectionId=…); several legs use indexed parameters
+// (marketId[0]=…&selectionId[0]=…), which puts every leg on one betslip.
+const FANDUEL_BETSLIP = 'https://sportsbook.fanduel.com/addToBetslip';
+export const fanduelIds = (marketId?: string, selectionId?: string) => /^\d+(\.\d+)?$/.test(marketId || '') && /^\d+$/.test(selectionId || '');
+export const hasBetslipLink = (d: Details) => fanduelIds(d.fdMarket, d.fdSelection);
+export function betslipLink(picks: { details: Details }[]) {
+  const legs = picks.map(p => p.details).filter(hasBetslipLink);
+  if (!legs.length) return null;
+  if (legs.length === 1) return `${FANDUEL_BETSLIP}?marketId=${legs[0].fdMarket}&selectionId=${legs[0].fdSelection}`;
+  return `${FANDUEL_BETSLIP}?${legs.map((d, i) => `marketId[${i}]=${d.fdMarket}&selectionId[${i}]=${d.fdSelection}`).join('&')}`;
+}

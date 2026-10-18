@@ -1,8 +1,8 @@
 'use client';
 import { Fragment,useState } from 'react';
-import { ChevronDown,Pencil,Repeat,Search,X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { formatOdds,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
+import { ChevronDown,ExternalLink,Pencil,Repeat,Search,X } from 'lucide-react';
+import { Button,buttonVariants } from '@/components/ui/button';
+import { betslipLink,formatOdds,hasBetslipLink,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
 
 // Picks are shown as a printed parlay ticket: a row per leg, grouped by game
 // day, with members who have not picked yet listed last. Tapping a row opens
@@ -125,8 +125,25 @@ export function Ticket({board,picks,missing,members,ticket,outcome,onCopy,...act
     <div className="perforation" aria-hidden="true"/>
     <div className="px-5 pb-3 pt-4"><PickSearch query={query} filter={filter} onQuery={setQuery} onFilter={setFilter} label="Search this week's picks" placeholder="Team, player or member"/>{searching&&<p className="mt-2 text-sm text-[var(--ink-2)]" aria-live="polite">{hits.length===1?'1 pick':`${hits.length} picks`} of {picks.length}{filter!=='all'?`, ${filterLabel(filter)} only`:''}.</p>}</div>
     {searching&&!hits.length&&!shownMissing.length?<p className="border-t border-[var(--rule)] px-5 py-6 text-[var(--ink-2)]">No picks on this ticket match. Clear the search to see every leg.</p>:<Slip picks={searching?hits:picks} missing={shownMissing} board={board} terms={terms} {...actions}/>}
+    <FanDuelSlip picks={picks}/>
     <footer className="ticket-foot"><p>Tap a leg for details. Picks stay editable until they’re graded.</p><Button variant="outline" disabled={!picks.length} onClick={onCopy}>Copy picks</Button></footer>
   </article>;
+}
+
+// Opens this week's ungraded legs on a FanDuel betslip. Legs picked from the FanDuel
+// lines carry FanDuel's IDs; anything typed in by hand (props, manual picks) is listed
+// to add in the app. Placing the bet always stays with whoever places the ticket.
+function FanDuelSlip({picks}:{picks:Pick[]}) {
+  const legs=picks.filter(p=>p.status==='Pending'),linked=legs.filter(p=>hasBetslipLink(p.details)),manual=legs.filter(p=>!hasBetslipLink(p.details));
+  const all=betslipLink(linked);
+  if(!legs.length)return null;
+  return <section className="border-t border-[var(--rule)] px-5 py-4" aria-label="Open in FanDuel">
+    {all?<a className={buttonVariants({className:'btn-flag min-h-12 w-full rounded-lg sm:w-auto sm:px-7'})} href={all} target="_blank" rel="noreferrer"><ExternalLink className="size-4"/>Open {linked.length===1?'1 leg':`${linked.length} legs`} in FanDuel</a>
+      :<p className="text-sm text-[var(--ink-2)]">No legs can open in FanDuel yet. Picks chosen from the FanDuel lines on this site can.</p>}
+    {all&&<p className="mt-2 text-xs text-[var(--ink-2)]">Adds them to your FanDuel betslip. Check each price, enter the stake and place it yourself.</p>}
+    {manual.length>0&&<p className="mt-3 text-sm"><span className="font-semibold">Add by hand in FanDuel:</span> {manual.map(p=>`${p.member} (${p.selection})`).join(' · ')}</p>}
+    {linked.length>1&&<details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">Open one leg at a time</summary><ul className="mt-2 space-y-1.5">{linked.map(p=><li key={p.id}><a className="underline" href={betslipLink([p])!} target="_blank" rel="noreferrer">{p.member}: {p.selection} ({formatOdds(p.odds)})</a></li>)}</ul></details>}
+  </section>;
 }
 
 // Search across every week: every term must match the member, pick, sport, market or result.

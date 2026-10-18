@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { isAdmin } from '@/lib/admin';
 import { db, decode, pickColumns, safeWrite } from '@/lib/portal-db';
 import { kickSync, queueStatement } from '@/lib/sheet-sync';
-import { contradiction, contradictionMessage, formatOdds, members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
+import { contradiction, contradictionMessage, fanduelIds, formatOdds, members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
 const fail=(error:string,status=400)=>Response.json({error},{status});
 // Another member's pick in the same week on the opposite side of the same game, if any.
 // Members are blocked from it; the commissioner can still record what was actually bet.
@@ -21,6 +21,8 @@ function validate(body:Record<string,unknown>,legacy=false) {
   const details:Details=raw?Object.fromEntries(['team','opponent','market','line','eventDate','description'].map(k=>[k,String(raw[k as keyof Details]||'').trim().slice(0,200)])):{};
   // When the pick was filled from the FanDuel odds browser, keep when those odds were fetched.
   const feedAt=raw?String(raw.feedAt||'').trim():'';if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(feedAt))details.feedAt=feedAt;
+  // FanDuel's betslip IDs for the line, when the pick came from the FanDuel feed.
+  const fdMarket=raw?String(raw.fdMarket||'').trim():'',fdSelection=raw?String(raw.fdSelection||'').trim():'';if(fanduelIds(fdMarket,fdSelection))Object.assign(details,{fdMarket,fdSelection});
   if (!sport || sport.length>80 || !Number.isInteger(odds) || Math.abs(odds)<100 || Math.abs(odds)>1000000) throw Error('Enter a sport and valid American odds, such as −110 or +150.');
   if (!legacy || details.market) {
     if (!details.team || !details.opponent || !markets.includes(details.market||'') || !/^\d{4}-\d{2}-\d{2}$/.test(details.eventDate||'')) throw Error('Choose a market and enter the team/player, opponent, and event date.');
