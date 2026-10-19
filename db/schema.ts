@@ -57,6 +57,23 @@ export const weeklyRecaps = sqliteTable('weekly_recaps', {
   updatedAt: text('updated_at').notNull(),
 }, (table) => [uniqueIndex('one_recap_per_season_week').on(table.season, table.week)]);
 
+// Money for each week's bet, recorded from Venmo receipts by the Claude Venmo routine
+// (or added by the commissioner). kind: base (the low scorer's $10), boost, reup, or
+// deposit (the commissioner funding FanDuel). id is the Venmo transaction ID when there
+// is one, so a receipt is only ever recorded once.
+export const payments = sqliteTable('payments', {
+  id: text('id').primaryKey(),
+  season: text('season').notNull(),
+  week: integer('week').notNull(),
+  member: text('member').notNull().default(''),
+  kind: text('kind').notNull(),
+  amount: real('amount').notNull(),
+  note: text('note').notNull().default(''),
+  paidAt: text('paid_at').notNull(),
+  source: text('source').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const missedSubmissions = sqliteTable('missed_submissions', {
   id: text('id').primaryKey(),
   season: text('season').notNull(),
