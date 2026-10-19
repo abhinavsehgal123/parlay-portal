@@ -38,10 +38,17 @@ test('finalizes with pending legs, records missing members without penalty, and 
   assert.equal(f.sql.prepare('SELECT count(*) n FROM missed_submissions').get().n,0);
   assert.equal(f.sql.prepare("SELECT count(*) n FROM submissions WHERE status='Pending'").get().n,2);
 });
-test('does not finalize while a game in the week is today or later',async()=>{
+test('on Tuesday, finalizes with a leg later in the week still pending',async()=>{
   const f=fixture();
-  f.add('Nav','Hit','2026-10-11');f.add('Fab','Pending','2026-10-13');
+  f.add('Nav','Hit','2026-10-11');f.add('Rohan','Pending','2026-10-14');
   const r=await f.finalize.autoFinalize(TUESDAY);
+  assert.equal(r.finalized,true);assert.equal(r.pending,1);assert.equal(f.settings().week,6);
+  assert.equal(f.sql.prepare("SELECT status FROM submissions WHERE member='Rohan'").get().status,'Pending');
+});
+test('on other days, does not finalize while a game in the week is today or later',async()=>{
+  const f=fixture();
+  f.add('Nav','Hit','2026-10-11');f.add('Fab','Pending','2026-10-16');
+  const r=await f.finalize.autoFinalize(Date.parse('2026-10-16T14:00:00Z'));
   assert.equal(r.finalized,false);assert.match(r.note,/today or later/);
   assert.equal(f.settings().week,5);assert.equal(f.sql.prepare('SELECT count(*) n FROM weekly_cycles').get().n,0);
 });

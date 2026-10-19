@@ -5,8 +5,10 @@ import { members } from './portal';
 // finalize in the Admin tab, it does not wait for every leg to be graded:
 // pending legs stay pending in History for the commissioner to grade later.
 // Members without a pick are only recorded as missing (no penalty), and
-// official ticket details are not required. It refuses while any dated game
-// in the week is today or later (Eastern), and advances exactly one week.
+// official ticket details are not required. On Tuesdays (Eastern) it rolls over
+// even if a leg is later in the week (a Wednesday game, say): that leg stays
+// pending in its week and is graded after it plays. On any other day it refuses
+// while a dated game in the week is today or later. It advances exactly one week.
 export type FinalizeSummary = { finalized: boolean; week?: number; nextWeek?: number; picks?: number; pending?: number; missing?: string[]; note: string };
 
 const easternToday = (ms: number) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
@@ -17,7 +19,8 @@ export async function autoFinalize(now = Date.now()): Promise<FinalizeSummary> {
   const picks = (await db().prepare('SELECT member, status, revision, details FROM submissions WHERE season = ? AND week = ?').bind(s.season, s.activeWeek).all<{ member: string; status: string; revision: number; details: string }>()).results;
   if (!picks.length) return { finalized: false, week: s.activeWeek, note: `Week ${s.activeWeek} has no picks yet` };
   const today = easternToday(now);
-  const upcoming = picks.filter(p => { try { const d = (JSON.parse(p.details || '{}') as { eventDate?: string }).eventDate; return Boolean(d && d >= today); } catch { return false; } });
+  const tuesday = new Date(now).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/New_York' }) === 'Tue';
+  const upcoming = tuesday ? [] : picks.filter(p => { try { const d = (JSON.parse(p.details || '{}') as { eventDate?: string }).eventDate; return Boolean(d && d >= today); } catch { return false; } });
   if (upcoming.length) return { finalized: false, week: s.activeWeek, note: `${upcoming.length} pick(s) in Week ${s.activeWeek} have games today or later` };
 
   const id = `${s.season}|${s.activeWeek}`, at = new Date(now).toISOString();

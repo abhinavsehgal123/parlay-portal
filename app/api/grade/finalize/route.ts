@@ -4,7 +4,7 @@ import { graderToken } from '@/lib/schedule-auth';
 
 // Tuesday-morning rollover by the scheduled Claude routine (PORTAL_GRADER_TOKEN),
 // after it has graded what it can. Same rollover as /api/finalize: it refuses
-// while any game in the week is today or later, and never finalizes a week twice.
+// on any day but Tuesday while a game in the week is today or later, and never finalizes a week twice.
 export async function POST(request: Request) {
   if (!graderToken(request)) return Response.json({ error: 'Not authorized to finalize the week.' }, { status: 401 });
   let scores: unknown = null;

@@ -29,7 +29,7 @@ All scheduled work runs from Claude Code routines on Abhinav's Claude plan, not 
   - it adds a change-history entry by "Automatic result (Claude, web research)";
   - it refuses a pick that was edited or already graded.
 - **Anything unclear stays Pending.** That includes a player who didn't play, unclear overtime rules, and a game it can't pin down. The routine lists those in its summary for the commissioner.
-- **Finalizing.** The Tuesday run finalizes even if legs are still pending, and records no-shows without a penalty. The finalize refuses while any game in the week is today or later, and it never finalizes a week twice.
+- **Finalizing.** The Tuesday run finalizes even if legs are still pending, and records no-shows without a penalty. A leg dated later in the week (a Wednesday game) doesn't hold it up: that leg stays pending in its week's History and the next runs grade it after it plays. On any day but Tuesday the finalize refuses while a game in the week is today or later, and it never finalizes a week twice.
 
 All of these endpoints (`/api/grade`, `/api/grade/scores`, `/api/grade/finalize`) take only `PORTAL_GRADER_TOKEN`. That token can do three things:
 - read pending picks and grade them;
