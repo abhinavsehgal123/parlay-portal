@@ -35,10 +35,13 @@ function Award({title,who,detail}:{title:string;who:string;detail:string}) {
 
 export function SeasonStats({board,members,season,week}:{board:Board;members:string[];season:string;week:number}) {
   const rows=seasonRows(board,members,season,week);
-  const top=<K extends keyof Row>(key:K,ok:(r:Row)=>boolean=()=>true)=>rows.filter(ok).sort((a,b)=>Number(b[key])-Number(a[key]))[0];
+  // Every member tied for the highest value, so a shared award names them all.
+  const top=<K extends keyof Row>(key:K)=>{const best=Math.max(0,...rows.map(r=>Number(r[key])));return best>0?{best,who:rows.filter(r=>Number(r[key])===best)}:null;};
+  const names=(rs:Row[])=>rs.map(r=>r.member).join(', ');
+  const going=(t:{best:number;who:Row[]},k:'W'|'L')=>t.who.some(r=>r.current===`${k}${t.best}`)?', still going':'';
   const sharp=rows.filter(r=>r.w+r.l>=3).sort((a,b)=>(b.rate??0)-(a.rate??0)||b.w-a.w)[0];
   const longshot=rows.filter(r=>r.bestHit).sort((a,b)=>b.bestHit!.odds-a.bestHit!.odds)[0];
-  const heater=top('bestWin',r=>r.bestWin>0),cold=top('worstLoss',r=>r.worstLoss>0),reup=top('replaced',r=>r.replaced>0);
+  const heater=top('bestWin'),cold=top('worstLoss'),reup=top('replaced');
   const finals=board.finalizations.filter(f=>f.season===season&&f.week>=1);
   const cashed=finals.filter(f=>{const t=board.tickets.find(x=>x.season===season&&x.week===f.week);if(t?.result)return t.result==='Won';const legs=board.historySubmissions.filter(p=>p.season===season&&p.week===f.week);return legs.length>0&&legs.every(p=>['Hit','Push','Void'].includes(p.status))&&legs.some(p=>p.status==='Hit');}).length;
   return <section aria-labelledby="season-awards" className="mt-8">
@@ -47,9 +50,9 @@ export function SeasonStats({board,members,season,week}:{board:Board;members:str
     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {sharp&&<Award title="Sharpest" who={sharp.member} detail={`${Math.round(100*sharp.rate!)}% (${sharp.w}–${sharp.l}), at least 3 decided picks`}/>}
       {longshot&&<Award title="Longshot king" who={longshot.member} detail={`${longshot.bestHit!.selection} hit at ${formatOdds(longshot.bestHit!.odds)}`}/>}
-      {heater&&<Award title="Heater" who={heater.member} detail={`${heater.bestWin} straight wins${heater.current===`W${heater.bestWin}`?', still going':''}`}/>}
-      {cold&&<Award title="Ice cold" who={cold.member} detail={`${cold.worstLoss} straight losses${cold.current===`L${cold.worstLoss}`?', still going':''}`}/>}
-      {reup&&<Award title="Re-up regular" who={reup.member} detail={`${reup.replaced} lost pick${reup.replaced===1?'':'s'} replaced`}/>}
+      {heater&&<Award title="Heater" who={names(heater.who)} detail={`${heater.best} straight wins${going(heater,'W')}`}/>}
+      {cold&&<Award title="Ice cold" who={names(cold.who)} detail={`${cold.best} straight losses${going(cold,'L')}`}/>}
+      {reup&&<Award title="Re-up regular" who={names(reup.who)} detail={`${reup.best} lost pick${reup.best===1?'':'s'} replaced${reup.who.length>1?' each':''}`}/>}
     </div>
     <h3 className="display mt-8 text-4xl">Member stats</h3>
     <div className="paper mt-3 overflow-x-auto"><table className="w-full text-sm tabular-nums"><thead><tr className="border-b border-[var(--rule)] text-[var(--ink-2)]">{['Member','Streak','Best run','Worst run','Best hit','Top sport','Re-ups'].map((x,i)=><th key={x} scope="col" className={`whitespace-nowrap px-3 py-3 font-semibold ${i?'text-right':'text-left'}`}>{x}</th>)}</tr></thead>
