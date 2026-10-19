@@ -15,6 +15,8 @@ const eventDate=(iso:string)=>new Date(iso).toLocaleDateString('en-CA',{timeZone
 const signed=(n:number)=>`${n>0?'+':''}${n}`;
 type Cell={line:string;odds:number;label:string;fill:Omit<Details,'feedAt'|'eventDate'>}|null;
 
+// FanDuel's betslip IDs travel with the pick so the ticket can open it in FanDuel.
+const ids=(o:OddsOutcome)=>o.bet?{fdMarket:o.bet.marketId,fdSelection:o.bet.selectionId}:{};
 function rows(e:OddsEvent):{team:string;cells:Cell[]}[] {
   const ml=(name:string)=>e.h2h.find(o=>o.name===name);
   const spread=(name:string)=>e.spreads.find(o=>o.name===name&&o.point!==undefined);
@@ -22,9 +24,9 @@ function rows(e:OddsEvent):{team:string;cells:Cell[]}[] {
   const side=(team:string,opponent:string,ou:'Over'|'Under')=>{
     const s=spread(team),t=total(ou),m=ml(team);
     return {team,cells:[
-      s?{line:signed(s.point!),odds:s.price,label:`${team} ${signed(s.point!)}`,fill:{market:'Spread',team,opponent,line:signed(s.point!)}}:null,
-      t?{line:`${ou==='Over'?'O':'U'} ${t.point}`,odds:t.price,label:`${ou} ${t.point}`,fill:{market:'Game total',team:e.away,opponent:e.home,description:ou,line:String(t.point)}}:null,
-      m?{line:'ML',odds:m.price,label:`${team} moneyline`,fill:{market:'Moneyline',team,opponent}}:null,
+      s?{line:signed(s.point!),odds:s.price,label:`${team} ${signed(s.point!)}`,fill:{market:'Spread',team,opponent,line:signed(s.point!),...ids(s)}}:null,
+      t?{line:`${ou==='Over'?'O':'U'} ${t.point}`,odds:t.price,label:`${ou} ${t.point}`,fill:{market:'Game total',team:e.away,opponent:e.home,description:ou,line:String(t.point),...ids(t)}}:null,
+      m?{line:'ML',odds:m.price,label:`${team} moneyline`,fill:{market:'Moneyline',team,opponent,...ids(m)}}:null,
     ] as Cell[]};
   };
   const out=[side(e.away,e.home,'Over'),side(e.home,e.away,'Under')];

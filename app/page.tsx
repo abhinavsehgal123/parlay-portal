@@ -112,8 +112,8 @@ function PickEditor({pick,board,busy,error,onClose,onSave}:{pick:Pick|'new';boar
   const [member,setMember]=useState(old?.member||''),[sport,setSport]=useState(start?.sport||'NFL'),[otherSport,setOtherSport]=useState('');
   const [details,setDetails]=useState<Details>(start?.details||{}),[selection,setSelection]=useState(start?.selection||''),[odds,setOdds]=useState(String(start?.odds||'')),[reason,setReason]=useState(''),[confirmed,setConfirmed]=useState(false),[review,setReview]=useState(false);
   const [structured,setStructured]=useState(!start||Boolean(start.details.market)),[browsing,setBrowsing]=useState(!start);
-  // Any manual change means the pick no longer matches the fetched FanDuel line, so drop the feed marker.
-  const update=(key:keyof Details,value:string)=>{setDetails(d=>({...d,[key]:value,feedAt:undefined}));setReview(false);setConfirmed(false);};
+  // Any manual change means the pick no longer matches the fetched FanDuel line, so drop the feed marker and FanDuel's IDs.
+  const update=(key:keyof Details,value:string)=>{setDetails(d=>({...d,[key]:value,feedAt:undefined,fdMarket:undefined,fdSelection:undefined}));setReview(false);setConfirmed(false);};
   const fromFeed=(f:OddsFill)=>{setSport(f.sport);setDetails(f.details);setOdds(String(f.odds));setStructured(true);setBrowsing(false);setReview(false);setConfirmed(false);};
   const tint=Boolean(details.feedAt);
   const display=structured?selectionText(details):selection;
