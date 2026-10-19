@@ -32,8 +32,8 @@ export function memberFrom(name: string) {
 export function kindFromNote(note: string, amount: number, isBasePayer: boolean): PaymentKind | null {
   const n = note.toLowerCase();
   if (/\bre[\s-]?up|\breup|^\s*re\b/.test(n)) return 'reup';
-  if (/\bboost|\bjuice/.test(n)) return 'boost';
-  if (/\bmega|megalay|\bbet\b|\bparlay|\bweek\s*\d+|\bwk\s*\d+/.test(n)) return isBasePayer && amount === BASE_STAKE ? 'base' : 'boost';
+  if (/\bboost|\bjuic|🧃/u.test(n)) return 'boost';
+  if (/\bmega|megalay|\blay\b|\bbet\b|\bparlay|\bweek\s*\d+|\bwk\s*\d+/.test(n)) return isBasePayer && amount === BASE_STAKE ? 'base' : 'boost';
   return null;
 }
 

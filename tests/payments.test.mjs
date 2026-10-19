@@ -30,9 +30,9 @@ function fixture(){
 test('notes are read for the kind of payment and the week',()=>{
   const {lib}=fixture();
   assert.equal(lib.kindFromNote('Reup - f***!',10,false),'reup');assert.equal(lib.kindFromNote('Re',10,false),'reup');assert.equal(lib.kindFromNote('re-up',10,false),'reup');
-  assert.equal(lib.kindFromNote('Juice',10,false),'boost');assert.equal(lib.kindFromNote('boost',20,false),'boost');
+  assert.equal(lib.kindFromNote('Juice',10,false),'boost');assert.equal(lib.kindFromNote('🧃',10,false),'boost');assert.equal(lib.kindFromNote('Juicd',5,false),'boost');assert.equal(lib.kindFromNote('Juice x2',50,false),'boost');assert.equal(lib.kindFromNote('Lay',10,true),'base');assert.equal(lib.kindFromNote('Re up',10,false),'reup');assert.equal(lib.kindFromNote('boost',20,false),'boost');
   assert.equal(lib.kindFromNote('Mega week 6',10,true),'base');assert.equal(lib.kindFromNote('Megalay week 4',10,false),'boost');assert.equal(lib.kindFromNote('bet',25,true),'boost');
-  for(const note of ['Pizza','Drink','Seltzers','Sandwich','Cash','Rent'])assert.equal(lib.kindFromNote(note,10,true),null,note);
+  for(const note of ['Pizza','Drink','Seltzers','Sandwich','Cash','Rent','Uber to BUF','Lake beer','Gillespie gift card #2','Relay','Player'])assert.equal(lib.kindFromNote(note,10,true),null,note);
   assert.equal(lib.weekFromNote('Mega week 6'),6);assert.equal(lib.weekFromNote('wk5'),5);assert.equal(lib.weekFromNote('Juice'),null);
   assert.equal(lib.memberFrom('Brooks Baro'),'Brooks');assert.equal(lib.memberFrom('griffin  gillespie'),'Griff');assert.equal(lib.memberFrom('Pooya Nayebi'),'');
 });
