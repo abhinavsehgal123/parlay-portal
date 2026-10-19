@@ -11,7 +11,8 @@ import type { Pick } from './portal';
 // - exactly one completed game in that sport with both teams and that date;
 // - moneyline ties stay pending (sportsbook tie rules vary by sport);
 // - Champions League stays pending (knockout extra time can't be told apart).
-export const RESULTS_WEEKLY_CREDITS = 60;
+// Score checks run about 7 times a week from the Claude routines and usually cost 30–40.
+export const RESULTS_WEEKLY_CREDITS = 40;
 const COST = 2; // one sport's scores with daysFrom
 const RUN_LEASE_MS = 5 * 60 * 1000;
 const autoMarkets = ['Moneyline', 'Spread', 'Game total'];

@@ -69,3 +69,9 @@ test('over and under on the same total or prop are contradictory',async()=>{cons
   assert.equal((await f.call('POST',{...f.body,member:'Kith',details:{...prop,description:'Over passing touchdowns'}})).status,201);await f.flush();
   assert.equal((await f.call('POST',{...f.body,member:'Nav',details:{...prop,description:'Under passing touchdowns'}})).status,409);
   assert.equal((await f.call('POST',{...f.body,member:'Nav',details:{...prop,line:'225.5',description:'Under passing yards'}})).status,201);});
+test('admins see the Odds API balance and weekly caps; members do not',async()=>{const f=fixture();
+  f.sql.exec("INSERT INTO odds_usage (week_start,credits,remaining) VALUES ('2026-01-05',12,321)");
+  const member=await (await f.call('GET')).json();assert.equal(member.credits,undefined);
+  f.admin();const admin=await (await f.call('GET')).json();
+  assert.equal(admin.credits.remaining,321);assert.equal(admin.credits.linesCap,65);assert.equal(admin.credits.scoresCap,40);
+  assert.equal(typeof admin.credits.linesWeek,'number');assert.equal(typeof admin.credits.scoresWeek,'number');});
