@@ -46,6 +46,17 @@ export const weeklyTickets = sqliteTable('weekly_tickets', {
   resultNote: text('result_note').notNull().default(''),
 }, (table) => [uniqueIndex('one_ticket_per_season_week').on(table.season, table.week)]);
 
+// The week's recap, written by the Tuesday Claude routine after it finalizes the week,
+// for the commissioner to copy into the group chat.
+export const weeklyRecaps = sqliteTable('weekly_recaps', {
+  id: text('id').primaryKey(),
+  season: text('season').notNull(),
+  week: integer('week').notNull(),
+  text: text('text').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [uniqueIndex('one_recap_per_season_week').on(table.season, table.week)]);
+
 export const missedSubmissions = sqliteTable('missed_submissions', {
   id: text('id').primaryKey(),
   season: text('season').notNull(),

@@ -41,7 +41,7 @@ export async function GET(request:Request) {
     const s=await settings(); if(!s)return fail('League settings are unavailable. Please retry.',503);
     const admin=isAdmin(request);
     const thisWeek=easternWeekStart(Date.now());
-    const [p,c,f,t,m,q,r,u]=await Promise.all([
+    const [p,c,f,t,m,q,r,u,w]=await Promise.all([
       db().prepare(`SELECT ${pickColumns} FROM submissions ORDER BY season DESC,week DESC,created_at`).all(),
       db().prepare('SELECT id,submission_id AS submissionId,season,week,member,actor,action,before_json,after_json,reason,created_at AS createdAt FROM pick_changes ORDER BY created_at DESC').all(),
       db().prepare('SELECT season,week,pick_count AS pickCount,finalized_at AS finalizedAt FROM weekly_cycles ORDER BY season DESC,week DESC').all(),
@@ -53,11 +53,12 @@ export async function GET(request:Request) {
       admin?db().prepare(`SELECT (SELECT remaining FROM odds_usage WHERE remaining IS NOT NULL ORDER BY week_start DESC LIMIT 1) AS remaining,
         (SELECT COALESCE(credits,0) FROM odds_usage WHERE week_start=?) AS linesWeek,
         (SELECT COALESCE(SUM(credits),0) FROM results_runs WHERE week_start=?) AS scoresWeek`).bind(thisWeek,thisWeek).first<{remaining:number|null;linesWeek:number|null;scoresWeek:number}>():Promise.resolve(null),
+      db().prepare('SELECT season,week,text,updated_at AS updatedAt FROM weekly_recaps ORDER BY season DESC,week DESC').all(),
     ]);
     const history=p.results.map(decode);
     kickSync();
     return Response.json({settings:{...s,submissionsOpen:Boolean(s.submissionsOpen)},isAdmin:admin,submissions:history.filter(x=>x.season===s.season&&x.week===s.activeWeek),historySubmissions:history,
-      changes:c.results.map(x=>({...x,before:JSON.parse(String(x.before_json)),after:JSON.parse(String(x.after_json)),before_json:undefined,after_json:undefined})),finalizations:f.results,tickets:t.results,missedSubmissions:m.results,
+      changes:c.results.map(x=>({...x,before:JSON.parse(String(x.before_json)),after:JSON.parse(String(x.after_json)),before_json:undefined,after_json:undefined})),finalizations:f.results,tickets:t.results,missedSubmissions:m.results,recaps:w.results,
       ...(admin?{results:r,credits:{remaining:u?.remaining??null,linesWeek:Number(u?.linesWeek??0),linesCap:ODDS_WEEKLY_CREDITS,scoresWeek:Number(u?.scoresWeek??0),scoresCap:RESULTS_WEEKLY_CREDITS},sync:{configured:Boolean(env.PORTAL_SHEET_WEBHOOK_URL&&env.PORTAL_SHEET_SECRET),pending:q.results.length,failed:q.results.filter(x=>Number(x.attempts)>0).length,items:q.results.map(x=>({id:x.id,attempts:x.attempts,error:x.error,member:JSON.parse(String(x.payload)).member||'Removed pick'}))}}:{})},{headers:{'Cache-Control':'no-store'}});
   }catch{console.error('portal_read_failed');return fail('The board could not load. Please retry; saved picks are unchanged.',503);}
 }

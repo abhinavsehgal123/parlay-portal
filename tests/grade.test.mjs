@@ -25,7 +25,7 @@ function fixture(){
   const call=(method,body,token=GRADER)=>route[method](new Request('https://portal.invalid/api/grade',{method,headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}));
   const row=id=>sql.prepare('SELECT status,revision,evidence FROM submissions WHERE id=?').get(id);
   const post=(path,token=GRADER)=>load(`app/api/grade/${path}/route.ts`).POST(new Request(`https://portal.invalid/api/grade/${path}`,{method:'POST',headers:{authorization:`Bearer ${token}`}}));
-  return {sql,add,call,row,route,post,onGrade(fn){beforeGrade=fn;}};
+  return {sql,add,call,row,route,post,load,onGrade(fn){beforeGrade=fn;}};
 }
 const prop={team:'Jalon Daniels',opponent:'Dallas Cowboys',market:'Player prop',line:'44.5',description:'Over passing yards',eventDate:'2026-10-01'};
 const grade=(id,extra={})=>({id,revision:0,status:'Hit',result:'Jalon Daniels: 251 passing yards (final)',source:'https://www.espn.com/nfl/boxscore/_/gameId/1',reason:'251 yards cleared the 44.5 line',...extra});
@@ -81,4 +81,17 @@ test('routines can run the score check and the weekly rollover with the grader t
   const fin=await f.post('finalize');assert.equal(fin.status,200);const r=await fin.json();assert.equal(r.finalized,true);assert.equal(r.nextWeek,6);
   assert.equal(f.sql.prepare('SELECT active_week w FROM portal_settings').get().w,6);
   assert.equal((await (await f.post('finalize')).json()).finalized,false);
+});
+test('recaps save only for finalized weeks, with the grader token, and replace on resave',async()=>{
+  const f=fixture();
+  const save=(body,token=GRADER)=>f.load('app/api/grade/recap/route.ts').POST(new Request('https://portal.invalid/api/grade/recap',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(body)}));
+  const text='Week 5 cashed? Not quite: 7-5. Shan stays hot, CJ and Griff re-upped and still lost.';
+  assert.equal((await save({season:'2026 Season',week:5,text},SCHEDULE)).status,401);
+  assert.equal((await save({season:'2026 Season',week:5,text})).status,409);
+  f.sql.exec("INSERT INTO weekly_cycles (id,season,week,pick_count,finalized_at) VALUES ('2026 Season|5','2026 Season',5,12,'2026-10-13T16:19:38Z')");
+  assert.equal((await save({season:'2026 Season',week:5,text:'too short'})).status,400);
+  assert.equal((await save({season:'2026 Season',week:5,text})).status,200);
+  assert.equal((await save({season:'2026 Season',week:5,text:text+' Updated.'})).status,200);
+  const rows=f.sql.prepare('SELECT week,text FROM weekly_recaps').all();
+  assert.equal(rows.length,1);assert.match(rows[0].text,/Updated\.$/);
 });

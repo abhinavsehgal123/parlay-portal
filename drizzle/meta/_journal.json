@@ -64,6 +64,13 @@
       "when": 1791513822297,
       "tag": "0009_ticket_result",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792375294249,
+      "tag": "0010_weekly_recaps",
+      "breakpoints": true
     }
   ]
 }
