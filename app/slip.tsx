@@ -2,7 +2,7 @@
 import { Fragment,useState } from 'react';
 import { ChevronDown,ExternalLink,Pencil,Repeat,Search,X } from 'lucide-react';
 import { Button,buttonVariants } from '@/components/ui/button';
-import { betslipLink,formatOdds,hasBetslipLink,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
+import { betslipLink,formatOdds,startLabel,hasBetslipLink,statusLabel,type Board,type Pick,type Status,type Ticket as TicketRecord } from '@/lib/portal';
 
 // Picks are shown as a printed parlay ticket: a row per leg, grouped by game
 // day, with members who have not picked yet listed last. Tapping a row opens
@@ -26,7 +26,7 @@ export function Highlight({text,terms}:{text:string;terms:string[]}) {
 }
 
 export function groupByDay(picks:Pick[]) {
-  const sorted=[...picks].sort((a,b)=>(a.details.eventDate||'9999').localeCompare(b.details.eventDate||'9999')||a.createdAt.localeCompare(b.createdAt));
+  const sorted=[...picks].sort((a,b)=>(a.details.eventDate||'9999').localeCompare(b.details.eventDate||'9999')||(a.details.startTime||'99').localeCompare(b.details.startTime||'99')||a.createdAt.localeCompare(b.createdAt));
   const groups:{day:string;picks:Pick[]}[]=[];
   for(const p of sorted){const day=dayLabel(p.details.eventDate);const g=groups.find(x=>x.day===day);if(g)g.picks.push(p);else groups.push({day,picks:[p]});}
   return groups;
@@ -47,7 +47,7 @@ function Leg({pick,board,archived,open,terms,onToggle,onEdit,onGrade,onRemove}:L
       <span className="leg-status"><Stamp status={pick.status}/></span>
       <span className="leg-pick"><Highlight text={pick.selection} terms={terms}/></span>
       <span className="leg-odds">{formatOdds(pick.odds)}</span>
-      <span className="leg-meta"><Highlight text={`${pick.sport}${d.market?`, ${d.market.toLowerCase()}`:''}`} terms={terms}/></span>
+      <span className="leg-meta">{d.startTime&&<>{startLabel(d.startTime)} · </>}<Highlight text={`${pick.sport}${d.market?`, ${d.market.toLowerCase()}`:''}`} terms={terms}/></span>
       <ChevronDown aria-hidden="true" className={`leg-caret ${open?'rotate-180':''}`}/>
     </button>
     {open&&<div id={panel} className="leg-detail">
@@ -56,7 +56,7 @@ function Leg({pick,board,archived,open,terms,onToggle,onEdit,onGrade,onRemove}:L
         {d.opponent&&<><dt>Matchup</dt><dd>{d.team} vs {d.opponent}</dd></>}
         {d.line&&<><dt>Line</dt><dd>{d.line}</dd></>}
         {d.description&&<><dt>Market</dt><dd>{d.description}</dd></>}
-        {d.eventDate&&<><dt>Game day</dt><dd>{dayLabel(d.eventDate)}</dd></>}
+        {d.eventDate&&<><dt>Game day</dt><dd>{dayLabel(d.eventDate)}{d.startTime?`, ${startLabel(d.startTime)}`:''}</dd></>}
         <dt>FanDuel odds</dt><dd className="tabular-nums">{formatOdds(pick.odds)}</dd>
         <dt>Result</dt><dd>{statusLabel(pick.status)}</dd>
         {pick.evidence.result&&<><dt>Final</dt><dd>{pick.evidence.result}</dd></>}

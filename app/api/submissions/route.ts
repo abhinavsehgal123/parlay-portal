@@ -5,7 +5,7 @@ import { kickSync, queueStatement } from '@/lib/sheet-sync';
 import { easternWeekStart, ODDS_WEEKLY_CREDITS } from '@/lib/odds';
 import { RESULTS_WEEKLY_CREDITS } from '@/lib/results';
 import { lowScorer } from '@/lib/sleeper';
-import { contradiction, contradictionMessage, fanduelIds, formatOdds, members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
+import { contradiction, contradictionMessage, fanduelIds, formatOdds, isStartTime, members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
 const fail=(error:string,status=400)=>Response.json({error},{status});
 // Another member's pick in the same week on the opposite side of the same game, if any.
 // Members are blocked from it; the commissioner can still record what was actually bet.
@@ -21,11 +21,12 @@ function audit(id:string,before:Partial<Pick>,after:Partial<Pick>,actor:string,a
 }
 function validate(body:Record<string,unknown>,legacy=false) {
   const sport=String(body.sport||'').trim(),odds=Number(body.odds),raw=body.details as Details|undefined;
-  const details:Details=raw?Object.fromEntries(['team','opponent','market','line','eventDate','description'].map(k=>[k,String(raw[k as keyof Details]||'').trim().slice(0,200)])):{};
+  const details:Details=raw?Object.fromEntries(['team','opponent','market','line','eventDate','startTime','description'].map(k=>[k,String(raw[k as keyof Details]||'').trim().slice(0,200)])):{};
   // When the pick was filled from the FanDuel odds browser, keep when those odds were fetched.
   const feedAt=raw?String(raw.feedAt||'').trim():'';if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(feedAt))details.feedAt=feedAt;
   // FanDuel's betslip IDs for the line, when the pick came from the FanDuel feed.
   const fdMarket=raw?String(raw.fdMarket||'').trim():'',fdSelection=raw?String(raw.fdSelection||'').trim():'';if(fanduelIds(fdMarket,fdSelection))Object.assign(details,{fdMarket,fdSelection});
+  if(!isStartTime(details.startTime))delete details.startTime;
   if (!sport || sport.length>80 || !Number.isInteger(odds) || Math.abs(odds)<100 || Math.abs(odds)>1000000) throw Error('Enter a sport and valid American odds, such as −110 or +150.');
   if (!legacy || details.market) {
     if (!details.team || !details.opponent || !markets.includes(details.market||'') || !/^\d{4}-\d{2}-\d{2}$/.test(details.eventDate||'')) throw Error('Choose a market and enter the team/player, opponent, and event date.');

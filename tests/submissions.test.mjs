@@ -75,3 +75,9 @@ test('admins see the Odds API balance and weekly caps; members do not',async()=>
   f.admin();const admin=await (await f.call('GET')).json();
   assert.equal(admin.credits.remaining,321);assert.equal(admin.credits.linesCap,65);assert.equal(admin.credits.scoresCap,40);
   assert.equal(typeof admin.credits.linesWeek,'number');assert.equal(typeof admin.credits.scoresWeek,'number');});
+test('a pick keeps a valid Eastern start time and drops a malformed one',async()=>{const f=fixture();
+  const p=await (await f.call('POST',{...f.body,details:{...f.body.details,startTime:'19:30'}})).json();await f.flush();
+  assert.equal(JSON.parse(f.sql.prepare('SELECT details FROM submissions').get().details).startTime,'19:30');
+  assert.equal((await f.call('PUT',{...f.body,id:p.id,revision:0,confirmOwnPick:true,details:{...f.body.details,startTime:'7:30 PM'}})).status,200);
+  assert.equal(JSON.parse(f.sql.prepare('SELECT details FROM submissions').get().details).startTime,undefined);
+});

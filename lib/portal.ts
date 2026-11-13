@@ -14,7 +14,7 @@ export const oddsSports = [
 export const markets = ['Moneyline', 'Spread', 'Game total', 'Player prop', 'Other'];
 export type Status = 'Pending' | 'Hit' | 'Miss' | 'Push' | 'Void';
 // fdMarket/fdSelection are FanDuel's own IDs for the line, kept when a pick is filled from the FanDuel feed.
-export type Details = { team?: string; opponent?: string; market?: string; line?: string; eventDate?: string; description?: string; feedAt?: string; fdMarket?: string; fdSelection?: string };
+export type Details = { team?: string; opponent?: string; market?: string; line?: string; eventDate?: string; startTime?: string; description?: string; feedAt?: string; fdMarket?: string; fdSelection?: string };
 export type Evidence = { result?: string; source?: string; reason?: string; gradedAt?: string };
 export type Pick = { id: string; season: string; week: number; member: string; sport: string; selection: string; odds: number; status: Status; createdAt: string; updatedAt: string; revision: number; details: Details; evidence: Evidence };
 export type Settings = { season: string; activeWeek: number; submissionsOpen: boolean; deadlineLabel: string };
@@ -65,4 +65,12 @@ export function betslipLink(picks: { details: Details }[]) {
   const legs = picks.map(p => p.details).filter(hasBetslipLink);
   if (!legs.length) return null;
   return `${FANDUEL_BETSLIP}?${legs.map((d, i) => `marketId[${i}]=${d.fdMarket}&selectionId[${i}]=${d.fdSelection}`).join('&')}`;
+}
+
+// A game's start time, stored as 24-hour Eastern "HH:MM" next to its Eastern date, shown as "7:30 PM ET".
+export const isStartTime = (t?: string) => Boolean(t && /^([01]\d|2[0-3]):[0-5]\d$/.test(t));
+export function startLabel(t?: string) {
+  if (!t || !isStartTime(t)) return '';
+  const [h, m] = t.split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'} ET`;
 }

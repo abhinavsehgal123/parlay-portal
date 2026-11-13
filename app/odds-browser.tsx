@@ -12,8 +12,9 @@ const eastern=(iso:string,o:Intl.DateTimeFormatOptions)=>new Date(iso).toLocaleS
 const kickoff=(iso:string)=>eastern(iso,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' ET';
 const clock=(iso:string)=>eastern(iso,{hour:'numeric',minute:'2-digit'})+' ET';
 const eventDate=(iso:string)=>new Date(iso).toLocaleDateString('en-CA',{timeZone:'America/New_York'});
+const startTime=(iso:string)=>eastern(iso,{hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 const signed=(n:number)=>`${n>0?'+':''}${n}`;
-type Cell={line:string;odds:number;label:string;fill:Omit<Details,'feedAt'|'eventDate'>}|null;
+type Cell={line:string;odds:number;label:string;fill:Omit<Details,'feedAt'|'eventDate'|'startTime'>}|null;
 
 // FanDuel's betslip IDs travel with the pick so the ticket can open it in FanDuel.
 const ids=(o:OddsOutcome)=>o.bet?{fdMarket:o.bet.marketId,fdSelection:o.bet.selectionId}:{};
@@ -53,7 +54,7 @@ export function OddsBrowser({initialSport,onPick}:{initialSport?:string;onPick:(
   const sport=SPORTS.find(s=>s.key===key)!,board=boards[key];
   const terms=query.toLowerCase().split(/\s+/).filter(Boolean);
   const events=(board?.events??[]).filter(e=>terms.every(t=>`${e.away} ${e.home}`.toLowerCase().includes(t)));
-  const pick=(e:OddsEvent,c:NonNullable<Cell>)=>onPick({sport:sport.sport,odds:c.odds,details:{...c.fill,eventDate:eventDate(e.commence),feedAt:board?.fetchedAt||undefined}});
+  const pick=(e:OddsEvent,c:NonNullable<Cell>)=>onPick({sport:sport.sport,odds:c.odds,details:{...c.fill,eventDate:eventDate(e.commence),startTime:startTime(e.commence),feedAt:board?.fetchedAt||undefined}});
   return <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200" aria-label="FanDuel lines">
     <div className="bg-[var(--turf)] px-4 py-3 text-[var(--chalk)]"><p className="font-bold">Find it on FanDuel</p><p className="text-xs text-white/75">Tap a line to fill in your pick</p></div>
     <div className="flex gap-2 overflow-x-auto bg-[var(--paper-2)] px-3 py-3">{SPORTS.map(s=><button key={s.key} type="button" aria-pressed={s.key===key} onClick={()=>setKey(s.key)} className={`min-h-9 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-sm font-bold ${s.key===key?'border-[var(--turf)] bg-[var(--turf)] text-[var(--flag)]':'border-slate-300 bg-white text-slate-900'}`}>{s.label}</button>)}</div>
