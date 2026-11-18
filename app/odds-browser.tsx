@@ -2,7 +2,7 @@
 import { useEffect,useRef,useState } from 'react';
 import { RefreshCw,Search,X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatOdds,oddsSports,type Details } from '@/lib/portal';
+import { easternStartTime,formatOdds,oddsSports,type Details } from '@/lib/portal';
 import type { OddsBoard,OddsEvent,OddsOutcome } from '@/lib/odds';
 import { Highlight } from './slip';
 
@@ -12,7 +12,7 @@ const eastern=(iso:string,o:Intl.DateTimeFormatOptions)=>new Date(iso).toLocaleS
 const kickoff=(iso:string)=>eastern(iso,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' ET';
 const clock=(iso:string)=>eastern(iso,{hour:'numeric',minute:'2-digit'})+' ET';
 const eventDate=(iso:string)=>new Date(iso).toLocaleDateString('en-CA',{timeZone:'America/New_York'});
-const startTime=(iso:string)=>eastern(iso,{hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+const startTime=easternStartTime;
 const signed=(n:number)=>`${n>0?'+':''}${n}`;
 type Cell={line:string;odds:number;label:string;fill:Omit<Details,'feedAt'|'eventDate'|'startTime'>}|null;
 

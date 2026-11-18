@@ -69,6 +69,13 @@ export function betslipLink(picks: { details: Details }[]) {
 
 // A game's start time, stored as 24-hour Eastern "HH:MM" next to its Eastern date, shown as "7:30 PM ET".
 export const isStartTime = (t?: string) => Boolean(t && /^([01]\d|2[0-3]):[0-5]\d$/.test(t));
+// The Eastern start time of an ISO instant as "HH:MM", built from parts: some browsers
+// (Safari) ignore hourCycle or report midnight as hour 24.
+export function easternStartTime(iso: string) {
+  const parts = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: false, timeZone: 'America/New_York' }).formatToParts(new Date(iso));
+  const get = (type: string) => Number(parts.find(p => p.type === type)?.value);
+  return `${String(get('hour') % 24).padStart(2, '0')}:${String(get('minute')).padStart(2, '0')}`;
+}
 export function startLabel(t?: string) {
   if (!t || !isStartTime(t)) return '';
   const [h, m] = t.split(':').map(Number);

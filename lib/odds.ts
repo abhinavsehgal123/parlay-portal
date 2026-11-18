@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { db } from './portal-db';
-import { fanduelIds, oddsSports } from './portal';
+import { easternStartTime, fanduelIds, oddsSports } from './portal';
 export { oddsSports };
 
 // FanDuel game lines via The Odds API, sized for its free plan (500 credits a
@@ -117,4 +117,19 @@ export async function getOdds(sportKey: string, now = Date.now()): Promise<OddsB
     console.error('odds_refresh_failed', { sport: sport.key, reason: error instanceof Error && /^Odds provider HTTP \d+$/.test(error.message) ? error.message : 'request failed' });
     return board(cached, false, true);
   }
+}
+
+// The Eastern start time of a game in the cached FanDuel feed, for a pick filled from
+// the feed without one (a page loaded before start times were recorded). Matches the
+// two teams in either order and the pick's Eastern date; '' when there is no match.
+export async function feedStartTime(team: string, opponent: string, eventDate: string) {
+  const rows = (await db().prepare('SELECT payload FROM odds_cache').all<{ payload: string }>()).results;
+  for (const row of rows) {
+    let events: OddsEvent[] = [];
+    try { events = JSON.parse(row.payload) as OddsEvent[]; } catch { continue; }
+    const e = events.find(x => [x.home, x.away].includes(team) && [x.home, x.away].includes(opponent)
+      && new Date(x.commence).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === eventDate);
+    if (e) return easternStartTime(e.commence);
+  }
+  return '';
 }

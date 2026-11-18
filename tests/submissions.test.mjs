@@ -81,3 +81,8 @@ test('a pick keeps a valid Eastern start time and drops a malformed one',async()
   assert.equal((await f.call('PUT',{...f.body,id:p.id,revision:0,confirmOwnPick:true,details:{...f.body.details,startTime:'7:30 PM'}})).status,200);
   assert.equal(JSON.parse(f.sql.prepare('SELECT details FROM submissions').get().details).startTime,undefined);
 });
+test('a feed pick sent without a start time takes it from the cached feed',async()=>{const f=fixture();
+  f.sql.prepare("INSERT INTO odds_cache (sport_key,payload,fetched_at,attempt_at) VALUES ('americanfootball_nfl',?,1,1)").run(JSON.stringify([{id:'e1',commence:'2026-09-28T00:20:00Z',home:'Raiders',away:'Saints',h2h:[],spreads:[],totals:[]}]));
+  assert.equal((await f.call('POST',{...f.body,details:{...f.body.details,feedAt:'2026-09-25T12:00:00.000Z'}})).status,201);
+  assert.equal(JSON.parse(f.sql.prepare('SELECT details FROM submissions').get().details).startTime,'20:20');
+});

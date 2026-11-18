@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { isAdmin } from '@/lib/admin';
 import { db, decode, pickColumns, safeWrite } from '@/lib/portal-db';
 import { kickSync, queueStatement } from '@/lib/sheet-sync';
-import { easternWeekStart, ODDS_WEEKLY_CREDITS } from '@/lib/odds';
+import { easternWeekStart, feedStartTime, ODDS_WEEKLY_CREDITS } from '@/lib/odds';
 import { RESULTS_WEEKLY_CREDITS } from '@/lib/results';
 import { lowScorer } from '@/lib/sleeper';
 import { contradiction, contradictionMessage, fanduelIds, formatOdds, isStartTime, members, markets, selectionText, type Details, type Pick } from '@/lib/portal';
@@ -37,6 +37,12 @@ function validate(body:Record<string,unknown>,legacy=false) {
   const selection=details.market?selectionText(details):String(body.selection||'').trim();
   if(selection.length<3 || selection.length>650) throw Error('Enter a clear selection.');
   return {sport,odds,details,selection};
+}
+// A pick filled from the FanDuel feed without a start time takes it from the cached feed.
+async function withStartTime<T extends {details:Details}>(fields:T) {
+  const d=fields.details;
+  if(d.feedAt&&!d.startTime&&d.team&&d.opponent&&d.eventDate){try{const t=await feedStartTime(d.team,d.opponent,d.eventDate);if(t)d.startTime=t;}catch{/* the time is optional */}}
+  return fields;
 }
 export async function GET(request:Request) {
   try {
@@ -74,7 +80,7 @@ export async function POST(request:Request) {
     const body=await request.json() as Record<string,unknown>,s=await settings();if(!s)return fail('League settings unavailable.',503);
     if(body.season!==s.season||Number(body.week)!==s.activeWeek)return fail('The week changed. Refresh before submitting.',409);
     const member=String(body.member||'');if(!members.includes(member))return fail('Choose your name.');
-    const fields=validate(body),key=`${s.season}|${s.activeWeek}|${fields.selection.toLowerCase().replace(/\s+/g,' ')}`;
+    const fields=await withStartTime(validate(body)),key=`${s.season}|${s.activeWeek}|${fields.selection.toLowerCase().replace(/\s+/g,' ')}`;
     const existing=await db().prepare(`SELECT ${pickColumns} FROM submissions WHERE season=? AND week=? AND member=?`).bind(s.season,s.activeWeek,member).first();
     if(existing){if(existing.selection===fields.selection&&Number(existing.odds)===fields.odds&&existing.sport===fields.sport)return Response.json({...decode(existing),alreadySaved:true});return fail(`${member} already has a pick. Use Edit on their card to replace it.`,409);}
     if(!s.submissionsOpen)return fail('Submissions are manually closed. Ask the commissioner to reopen them.',403);
@@ -107,7 +113,7 @@ async function mutate(request:Request,action:'edit'|'grade'|'remove') {
     const reason=String(body.reason||'').trim().slice(0,1000)||(replacing&&!admin?`Replaced ${before.selection} (${formatOdds(before.odds)}) after it lost.`:'');if(admin&&!reason)return fail('Add a short reason or result note for the change history.');
     const now=new Date().toISOString(),changeId=crypto.randomUUID();let after:Pick={...before,revision:before.revision+1,updatedAt:now};let statement:D1PreparedStatement;
     if(action==='edit'){
-      const fields=validate(body,!before.details.market),key=`${before.season}|${before.week}|${fields.selection.toLowerCase().replace(/\s+/g,' ')}`;
+      const fields=await withStartTime(validate(body,!before.details.market)),key=`${before.season}|${before.week}|${fields.selection.toLowerCase().replace(/\s+/g,' ')}`;
       if(await db().prepare('SELECT id FROM submissions WHERE duplicate_key=? AND id!=?').bind(key,before.id).first())return fail('That selection is already on the board.',409);
       if(!admin){const clash=await clashWith(fields.details,before.season,before.week,before.member);if(clash)return fail(contradictionMessage(clash),409);}
       after={...after,...fields,status:'Pending',evidence:{}};
